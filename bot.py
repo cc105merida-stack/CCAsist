@@ -33,7 +33,7 @@ if not SPREADSHEET_ID:
     logger.error("❌ SPREADSHEET_ID no está configurado en variables de entorno")
     exit(1)
 
-# ========== ESTADOS PARA LA CONVERSACIÓN ==========
+# ========== ESTADOS PARA LA CONVERSACIÓN ============
 NOMBRE, CEDULA, TELEFONO, ROL = range(4)
 
 # Estados para las llamadas
