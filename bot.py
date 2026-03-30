@@ -22,7 +22,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # ========== CONFIGURACIÓN DESDE VARIABLES DE ENTORNO ==========
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
-SPREADSHEET_ID = "18rFWMTaoxlVmmEKQvbSLMsPCA-9kS7OM"
+SPREADSHEET_ID = "1XHRqlZHvHfxg2g5CqrZZU6_Bnjt3AaNcF4YZkO1wcXk"
 
 # Verificar que las variables requeridas estén presentes
 if not TOKEN:
