@@ -54,7 +54,7 @@ ROLES = {
     "SUPERVISOR": "Supervisor"
 }
 
-# ========== FUNCIONES AUXILIARES ==========
+# ========== FUNCIONES AUXILIARES ============
 def calcular_duracion(hora_asignacion, hora_completacion):
     """Calcula la duración entre dos horas en formato HH:MM:SS"""
     try:
