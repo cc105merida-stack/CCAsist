@@ -347,6 +347,26 @@ def formatear_datos_llamada(datos_llamada, es_recontacto=False):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mensaje de bienvenida"""
     user_id = update.effective_user.id
+
+
+    #---------- TEMPORAL!!!!!!!!!!!!!!!!
+
+    # Temporal para debuggear
+    logger.info("🔍 Verificando credenciales...")
+    credentials_json = os.environ.get('GOOGLE_CREDENTIALS')
+    if credentials_json:
+       logger.info("✅ GOOGLE_CREDENTIALS encontrada")
+       try:
+           creds_dict = json.loads(credentials_json)
+           logger.info(f"✅ Cuenta de servicio: {creds_dict.get('client_email', 'No encontrado')}")
+       except:
+           logger.error("❌ Error al parsear GOOGLE_CREDENTIALS")
+    else:
+       logger.error("❌ GOOGLE_CREDENTIALS no encontrada")
+
+    logger.info(f"🔍 SPREADSHEET_ID: {SPREADSHEET_ID}")
+
+#------ fin temporal!!!!!!!!!
     
     sheet = conectar_google_sheets()
     if sheet:
