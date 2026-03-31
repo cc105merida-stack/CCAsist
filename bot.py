@@ -380,8 +380,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         "/miestado - Ver tu estado de registro\n"
                         "/revisarpendientes - Ver llamadas NO CONTESTA\n"
                         "/notificar [número] - Notificar a un agente para recontacto\n"
-                        "/cambiar_rol [cédula] [rol] - Cambiar rol de un usuario\n"
-                        "/cambiar_estado [cédula] [estado] - Cambiar estado de un usuario\n"
+                        "/cambiarrol [cédula] [rol] - Cambiar rol de un usuario\n"
+                        "/cambiarestado [cédula] [estado] - Cambiar estado de un usuario\n"
                         "/crearpdf - Iniciar creación de PDF con imágenes\n"
                         "/generarpdf - Generar PDF con las imágenes recibidas\n"
                         "/cancelarpdf - Cancelar creación de PDF\n"
@@ -418,7 +418,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Si ya estás registrado, contacta al administrador.",
         parse_mode='Markdown'
     )
-
+    
 async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mensaje de ayuda según el rol"""
     telegram_id = update.effective_user.id
@@ -436,8 +436,8 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*Gestión de Usuarios:*\n"
             "/registrar - Registrar nuevo usuario\n"
             "/miestado - Ver tu estado de registro\n"
-            "/cambiar_rol [cédula] [rol] - Cambiar rol de un usuario\n"
-            "/cambiar_estado [cédula] [estado] - Cambiar estado de un usuario\n\n"
+            "/cambiarrol [cédula] [rol] - Cambiar rol de un usuario\n"
+            "/cambiarestado [cédula] [estado] - Cambiar estado de un usuario\n\n"
             "*Gestión de Llamadas:*\n"
             "/revisarpendientes - Ver llamadas NO CONTESTA\n"
             "/notificar [número] - Notificar a un agente para recontacto\n\n"
@@ -478,6 +478,7 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Contacta al administrador para más información.",
             parse_mode='Markdown'
         )
+
 
 async def registrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Inicia el proceso de registro"""
@@ -1630,7 +1631,7 @@ async def miestado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Nota: Si necesitas actualizar tus datos, contacta al administrador."
     )
 
-async def cambiar_rol(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cambiarrol(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Permite al supervisor cambiar el rol de un usuario (solo Supervisores)"""
     telegram_id = update.effective_user.id
     
@@ -1658,12 +1659,12 @@ async def cambiar_rol(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(args) < 2:
         await update.message.reply_text(
             "📝 *Formato del comando:*\n"
-            "/cambiar_rol [cédula] [nuevo_rol]\n\n"
+            "/cambiarrol [cédula] [nuevo_rol]\n\n"
             "*Roles disponibles:*\n"
             "• Agente\n"
             "• Supervisor\n\n"
             "*Ejemplo:*\n"
-            "/cambiar_rol 12345678 Supervisor",
+            "/cambiarrol 12345678 Supervisor",
             parse_mode='Markdown'
         )
         return
@@ -1722,7 +1723,7 @@ async def cambiar_rol(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-async def cambiar_estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cambiarestado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Permite al supervisor cambiar el estado de un usuario (solo Supervisores)"""
     telegram_id = update.effective_user.id
     
@@ -1750,13 +1751,13 @@ async def cambiar_estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(args) < 2:
         await update.message.reply_text(
             "📝 *Formato del comando:*\n"
-            "/cambiar_estado [cédula] [nuevo_estado]\n\n"
+            "/cambiarestado [cédula] [nuevo_estado]\n\n"
             "*Estados disponibles:*\n"
             "• ACTIVO\n"
             "• INACTIVO\n"
             "• INHABILITADO\n\n"
             "*Ejemplo:*\n"
-            "/cambiar_estado 12345678 INACTIVO",
+            "/cambiarestado 12345678 INACTIVO",
             parse_mode='Markdown'
         )
         return
@@ -1822,6 +1823,7 @@ async def cambiar_estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"❌ Error al cambiar el estado: {e}"
         )
+
         
 async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancela el registro"""
@@ -2028,9 +2030,9 @@ def main():
     application.add_handler(CommandHandler("mispendientes", mis_pendientes))
     application.add_handler(CommandHandler("notificar", notificar))
     
-    # NUEVOS COMANDOS ADMINISTRATIVOS
-    application.add_handler(CommandHandler("cambiar_rol", cambiar_rol))
-    application.add_handler(CommandHandler("cambiar_estado", cambiar_estado))
+    # NUEVOS COMANDOS ADMINISTRATIVOS (sin guión bajo)
+    application.add_handler(CommandHandler("cambiarrol", cambiarrol))
+    application.add_handler(CommandHandler("cambiarestado", cambiarestado))
     
     # Comandos para PDF
     application.add_handler(CommandHandler("crearpdf", iniciar_creacion_pdf))
