@@ -1,3 +1,4 @@
+import asyncio
 import os
 import gspread
 import img2pdf
@@ -1824,6 +1825,157 @@ async def cambiarestado(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ Error al cambiar el estado: {e}"
         )
 
+ async def cargar_estructuras_desde_sheets(worksheet_data, worksheet_registros, context):
+    """Carga todas las estructuras de datos desde Google Sheets"""
+    try:
+        # 1. Limpiar estructuras existentes
+        llamadas_activas.usuarios_activos = {}
+        llamadas_activas.pendientes_notificacion = {}
+        llamadas_activas.recontactos_pendientes = {}
+        
+        if 'llamadas_activas' in context.bot_data:
+            context.bot_data['llamadas_activas'] = {}
+        if 'pendientes_notificacion' in context.bot_data:
+            context.bot_data['pendientes_notificacion'] = {}
+        if 'recontactos_pendientes' in context.bot_data:
+            context.bot_data['recontactos_pendientes'] = {}
+        
+        # 2. Cargar llamadas activas (EN PROCESO)
+        todas_las_filas = worksheet_data.get_all_values()
+        for i, fila in enumerate(todas_las_filas[1:], start=2):
+            if len(fila) >= 19:
+                estado2 = fila[18] if len(fila) > 18 else ""
+                validador = fila[1] if len(fila) > 1 else ""
+                
+                # Si está EN PROCESO, buscar quién la tomó
+                if estado2 == "EN PROCESO" and validador:
+                    # Buscar el Telegram ID del agente por su nombre
+                    telegram_id = None
+                    todos_registros = worksheet_registros.get_all_values()
+                    for reg in todos_registros[1:]:
+                        if len(reg) > 1 and reg[1] == validador and len(reg) > 3:
+                            telegram_id = reg[3]
+                            break
+                    
+                    if telegram_id:
+                        llamadas_activas.usuarios_activos[telegram_id] = {
+                            'fila': i,
+                            'folio': fila[3] if len(fila) > 3 else "Sin folio",
+                            'datos': fila,
+                            'nombre_usuario': validador,
+                            'hora_asignacion': fila[16] if len(fila) > 16 else "No registrada",
+                            'es_recontacto': False
+                        }
+                        if 'llamadas_activas' not in context.bot_data:
+                            context.bot_data['llamadas_activas'] = {}
+                        context.bot_data['llamadas_activas'][str(telegram_id)] = llamadas_activas.usuarios_activos[telegram_id]
+        
+        # 3. Cargar pendientes de notificación (NO CONTESTA sin agente asignado)
+        pendientes = obtener_llamadas_pendientes(worksheet_data)
+        for idx, pendiente in enumerate(pendientes, 1):
+            clave = f"pendiente_{idx}"
+            llamadas_activas.pendientes_notificacion[clave] = pendiente
+            if 'pendientes_notificacion' not in context.bot_data:
+                context.bot_data['pendientes_notificacion'] = {}
+            context.bot_data['pendientes_notificacion'][clave] = pendiente
+        
+        # 4. Cargar recontactos pendientes (NO CONTESTA con agente asignado)
+        todas_las_filas = worksheet_data.get_all_values()
+        for i, fila in enumerate(todas_las_filas[1:], start=2):
+            if len(fila) >= 20:
+                estado2 = fila[18] if len(fila) > 18 else ""
+                agente_asignado = fila[19] if len(fila) > 19 else ""
+                
+                if estado2 == "NO CONTESTA" and agente_asignado and agente_asignado != "":
+                    # Buscar el Telegram ID del agente
+                    telegram_id = None
+                    todos_registros = worksheet_registros.get_all_values()
+                    for reg in todos_registros[1:]:
+                        if len(reg) > 1 and reg[1] == agente_asignado and len(reg) > 3:
+                            telegram_id = reg[3]
+                            break
+                    
+                    llamada_id = f"recontacto_{i}_{fila[3] if len(fila) > 3 else 'sin_folio'}"
+                    llamadas_activas.recontactos_pendientes[llamada_id] = {
+                        'fila': i,
+                        'folio': fila[3] if len(fila) > 3 else "No disponible",
+                        'datos': fila,
+                        'nombre_cliente': fila[8] if len(fila) > 8 else "No disponible",
+                        'celular_cliente': fila[9] if len(fila) > 9 else "No disponible",
+                        'validador_original': agente_asignado,
+                        'hora_asignacion': fila[16] if len(fila) > 16 else "No registrada",
+                        'agente_telegram_id': telegram_id
+                    }
+                    if 'recontactos_pendientes' not in context.bot_data:
+                        context.bot_data['recontactos_pendientes'] = {}
+                    context.bot_data['recontactos_pendientes'][llamada_id] = llamadas_activas.recontactos_pendientes[llamada_id]
+        
+        return len(llamadas_activas.usuarios_activos), len(llamadas_activas.pendientes_notificacion), len(llamadas_activas.recontactos_pendientes)
+        
+    except Exception as e:
+        logger.error(f"Error al cargar estructuras: {e}")
+        return None, None, None
+
+
+async def recargar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recarga todas las estructuras de datos desde Google Sheets (solo Supervisores)"""
+    telegram_id = update.effective_user.id
+    
+    # Verificar que el usuario sea Supervisor
+    sheet = conectar_google_sheets()
+    if not sheet:
+        await update.message.reply_text("❌ Error al conectar con la base de datos.")
+        return
+    
+    worksheet_registros = obtener_hoja_registros(sheet)
+    if not worksheet_registros:
+        await update.message.reply_text("❌ Error al acceder a la hoja de registros.")
+        return
+    
+    rol = obtener_rol_usuario(worksheet_registros, telegram_id)
+    if rol != "Supervisor":
+        await update.message.reply_text(
+            "❌ No tienes permisos para usar este comando.\n"
+            "Este comando solo está disponible para Supervisores."
+        )
+        return
+    
+    # Mostrar mensaje de inicio
+    mensaje_inicio = await update.message.reply_text(
+        "🔄 *Recargando estructuras de datos...*\n\n"
+        "Por favor espera un momento.",
+        parse_mode='Markdown'
+    )
+    
+    # Obtener la hoja Data
+    worksheet_data = obtener_hoja_data(sheet)
+    if not worksheet_data:
+        await mensaje_inicio.edit_text("❌ Error al acceder a la hoja Data.")
+        return
+    
+    # Cargar todas las estructuras
+    activas, pendientes, recontactos = await cargar_estructuras_desde_sheets(worksheet_data, worksheet_registros, context)
+    
+    if activas is not None:
+        # Mensaje de éxito
+        mensaje_exito = (
+            f"✅ *Estructuras recargadas exitosamente*\n\n"
+            f"📊 *Resumen cargado:*\n"
+            f"• Llamadas activas (EN PROCESO): {activas}\n"
+            f"• Pendientes de notificar (NO CONTESTA): {pendientes}\n"
+            f"• Recontactos pendientes asignados: {recontactos}\n\n"
+            f"🔄 Los datos han sido actualizados desde Google Sheets."
+        )
+        await mensaje_inicio.edit_text(mensaje_exito, parse_mode='Markdown')
+        logger.info(f"✅ Supervisor {telegram_id} recargó estructuras: {activas} activas, {pendientes} pendientes, {recontactos} recontactos")
+    else:
+        await mensaje_inicio.edit_text(
+            "❌ *Error al recargar estructuras*\n\n"
+            "No se pudieron cargar los datos. Verifica la conexión con Google Sheets.",
+            parse_mode='Markdown'
+        )
+
+
         
 async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancela el registro"""
@@ -2030,9 +2182,12 @@ def main():
     application.add_handler(CommandHandler("mispendientes", mis_pendientes))
     application.add_handler(CommandHandler("notificar", notificar))
     
-    # NUEVOS COMANDOS ADMINISTRATIVOS (sin guión bajo)
+    # Comandos administrativos
     application.add_handler(CommandHandler("cambiarrol", cambiarrol))
     application.add_handler(CommandHandler("cambiarestado", cambiarestado))
+    
+    # Comando oculto para recargar estructuras (solo supervisores, no aparece en ayuda)
+    application.add_handler(CommandHandler("recargar", recargar))
     
     # Comandos para PDF
     application.add_handler(CommandHandler("crearpdf", iniciar_creacion_pdf))
@@ -2070,6 +2225,18 @@ def main():
         application.bot_data['pendientes_notificacion'] = {}
     if 'recontactos_pendientes' not in application.bot_data:
         application.bot_data['recontactos_pendientes'] = {}
+    
+    # Cargar datos iniciales al iniciar el bot
+    logger.info("📂 Cargando datos iniciales desde Google Sheets...")
+    if sheet:
+        worksheet_data = obtener_hoja_data(sheet)
+        worksheet_registros = obtener_hoja_registros(sheet)
+        if worksheet_data and worksheet_registros:
+            loop = asyncio.get_event_loop()
+            activas, pendientes, recontactos = loop.run_until_complete(
+                cargar_estructuras_desde_sheets(worksheet_data, worksheet_registros, application)
+            )
+            logger.info(f"📊 Datos iniciales cargados: {activas} activas, {pendientes} pendientes, {recontactos} recontactos")
     
     logger.info("✅ Bot iniciado correctamente")
     logger.info(f"📊 Usando Google Sheets ID: {SPREADSHEET_ID}")
