@@ -421,6 +421,8 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/miestado - Ver tu estado de registro\n"
             "/revisarpendientes - Ver llamadas NO CONTESTA\n"
             "/notificar [número] - Notificar a un agente para recontacto\n"
+            "/cambiar_rol [cédula] [rol] - Cambiar rol de un usuario\n"
+            "/cambiar_estado [cédula] [estado] - Cambiar estado de un usuario\n"
             "/crearpdf - Iniciar creación de PDF con imágenes\n"
             "/generarpdf - Generar PDF con las imágenes recibidas\n"
             "/cancelarpdf - Cancelar creación de PDF\n"
@@ -442,6 +444,7 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/cancelar - Cancelar el registro en proceso",
             parse_mode='Markdown'
         )
+
 
 async def registrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Inicia el proceso de registro"""
@@ -1594,6 +1597,199 @@ async def miestado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Nota: Si necesitas actualizar tus datos, contacta al administrador."
     )
 
+async def cambiar_rol(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Permite al supervisor cambiar el rol de un usuario (solo Supervisores)"""
+    telegram_id = update.effective_user.id
+    
+    # Verificar que el usuario sea Supervisor
+    sheet = conectar_google_sheets()
+    if not sheet:
+        await update.message.reply_text("❌ Error al conectar con la base de datos.")
+        return
+    
+    worksheet_registros = obtener_hoja_registros(sheet)
+    if not worksheet_registros:
+        await update.message.reply_text("❌ Error al acceder a la hoja de registros.")
+        return
+    
+    rol_solicitante = obtener_rol_usuario(worksheet_registros, telegram_id)
+    if rol_solicitante != "Supervisor":
+        await update.message.reply_text(
+            "❌ No tienes permisos para usar este comando.\n"
+            "Este comando solo está disponible para Supervisores."
+        )
+        return
+    
+    # Obtener los argumentos: cédula y nuevo rol
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "📝 *Formato del comando:*\n"
+            "/cambiar_rol [cédula] [nuevo_rol]\n\n"
+            "*Roles disponibles:*\n"
+            "• Agente\n"
+            "• Supervisor\n\n"
+            "*Ejemplo:*\n"
+            "/cambiar_rol 12345678 Supervisor",
+            parse_mode='Markdown'
+        )
+        return
+    
+    cedula = args[0]
+    nuevo_rol = args[1].capitalize()  # Capitalizar la primera letra
+    
+    # Validar que el rol sea válido
+    if nuevo_rol not in ["Agente", "Supervisor"]:
+        await update.message.reply_text(
+            f"❌ Rol '{nuevo_rol}' no válido.\n"
+            "Roles disponibles: Agente, Supervisor"
+        )
+        return
+    
+    # Buscar al usuario por cédula
+    try:
+        todos_los_registros = worksheet_registros.get_all_values()
+        fila_encontrada = None
+        datos_usuario = None
+        
+        for i, fila in enumerate(todos_los_registros[1:], start=2):  # start=2 para fila real
+            if len(fila) > 2 and fila[2] == cedula:  # Columna C es cédula
+                fila_encontrada = i
+                datos_usuario = fila
+                break
+        
+        if not fila_encontrada:
+            await update.message.reply_text(
+                f"❌ No se encontró un usuario con la cédula: {cedula}"
+            )
+            return
+        
+        # Obtener datos actuales
+        nombre_actual = datos_usuario[1] if len(datos_usuario) > 1 else "Desconocido"
+        rol_actual = datos_usuario[6] if len(datos_usuario) > 6 else "Agente"
+        
+        # Actualizar el rol en la columna G (índice 7 en 1-based, columna 7)
+        worksheet_registros.update_cell(fila_encontrada, 7, nuevo_rol)
+        
+        await update.message.reply_text(
+            f"✅ *Rol actualizado exitosamente*\n\n"
+            f"👤 *Usuario:* {nombre_actual}\n"
+            f"🆔 *Cédula:* {cedula}\n"
+            f"🔄 *Rol anterior:* {rol_actual}\n"
+            f"✨ *Nuevo rol:* {nuevo_rol}",
+            parse_mode='Markdown'
+        )
+        
+        logger.info(f"✅ Supervisor {telegram_id} cambió rol de {nombre_actual} ({cedula}) de {rol_actual} a {nuevo_rol}")
+        
+    except Exception as e:
+        logger.error(f"Error al cambiar rol: {e}")
+        await update.message.reply_text(
+            f"❌ Error al cambiar el rol: {e}"
+        )
+
+
+async def cambiar_estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Permite al supervisor cambiar el estado de un usuario (solo Supervisores)"""
+    telegram_id = update.effective_user.id
+    
+    # Verificar que el usuario sea Supervisor
+    sheet = conectar_google_sheets()
+    if not sheet:
+        await update.message.reply_text("❌ Error al conectar con la base de datos.")
+        return
+    
+    worksheet_registros = obtener_hoja_registros(sheet)
+    if not worksheet_registros:
+        await update.message.reply_text("❌ Error al acceder a la hoja de registros.")
+        return
+    
+    rol_solicitante = obtener_rol_usuario(worksheet_registros, telegram_id)
+    if rol_solicitante != "Supervisor":
+        await update.message.reply_text(
+            "❌ No tienes permisos para usar este comando.\n"
+            "Este comando solo está disponible para Supervisores."
+        )
+        return
+    
+    # Obtener los argumentos: cédula y nuevo estado
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "📝 *Formato del comando:*\n"
+            "/cambiar_estado [cédula] [nuevo_estado]\n\n"
+            "*Estados disponibles:*\n"
+            "• ACTIVO\n"
+            "• INACTIVO\n"
+            "• INHABILITADO\n\n"
+            "*Ejemplo:*\n"
+            "/cambiar_estado 12345678 INACTIVO",
+            parse_mode='Markdown'
+        )
+        return
+    
+    cedula = args[0]
+    nuevo_estado = args[1].upper()  # Convertir a mayúsculas
+    
+    # Validar que el estado sea válido
+    if nuevo_estado not in ["ACTIVO", "INACTIVO", "INHABILITADO"]:
+        await update.message.reply_text(
+            f"❌ Estado '{nuevo_estado}' no válido.\n"
+            "Estados disponibles: ACTIVO, INACTIVO, INHABILITADO"
+        )
+        return
+    
+    # Buscar al usuario por cédula
+    try:
+        todos_los_registros = worksheet_registros.get_all_values()
+        fila_encontrada = None
+        datos_usuario = None
+        
+        for i, fila in enumerate(todos_los_registros[1:], start=2):  # start=2 para fila real
+            if len(fila) > 2 and fila[2] == cedula:  # Columna C es cédula
+                fila_encontrada = i
+                datos_usuario = fila
+                break
+        
+        if not fila_encontrada:
+            await update.message.reply_text(
+                f"❌ No se encontró un usuario con la cédula: {cedula}"
+            )
+            return
+        
+        # Obtener datos actuales
+        nombre_actual = datos_usuario[1] if len(datos_usuario) > 1 else "Desconocido"
+        estado_actual = datos_usuario[5] if len(datos_usuario) > 5 else "ACTIVO"
+        rol_usuario = datos_usuario[6] if len(datos_usuario) > 6 else "Agente"
+        
+        # Actualizar el estado en la columna F (índice 6 en 1-based, columna 6)
+        worksheet_registros.update_cell(fila_encontrada, 6, nuevo_estado)
+        
+        # Emoji según el nuevo estado
+        estado_emoji = {
+            "ACTIVO": "🟢",
+            "INACTIVO": "⚪",
+            "INHABILITADO": "🔴"
+        }.get(nuevo_estado, "⚪")
+        
+        await update.message.reply_text(
+            f"✅ *Estado actualizado exitosamente*\n\n"
+            f"👤 *Usuario:* {nombre_actual}\n"
+            f"🆔 *Cédula:* {cedula}\n"
+            f"👑 *Rol:* {rol_usuario}\n"
+            f"🔄 *Estado anterior:* {estado_actual}\n"
+            f"✨ *Nuevo estado:* {estado_emoji} {nuevo_estado}",
+            parse_mode='Markdown'
+        )
+        
+        logger.info(f"✅ Supervisor {telegram_id} cambió estado de {nombre_actual} ({cedula}) de {estado_actual} a {nuevo_estado}")
+        
+    except Exception as e:
+        logger.error(f"Error al cambiar estado: {e}")
+        await update.message.reply_text(
+            f"❌ Error al cambiar el estado: {e}"
+        )
+        
 async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancela el registro"""
     await update.message.reply_text(
@@ -1775,7 +1971,7 @@ async def cancelar_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Usa /crearpdf para comenzar."
         )
 
-# ========== CONFIGURACIÓN Y EJECUCIÓN DEL BOT ==========
+# ========== CONFIGURACIÓN Y 
 def main():
     """Función principal que inicia el bot"""
     logger.info("🤖 Iniciando bot...")
@@ -1788,6 +1984,7 @@ def main():
     
     application = Application.builder().token(TOKEN).build()
     
+    # Comandos básicos
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("ayuda", ayuda))
     application.add_handler(CommandHandler("miestado", miestado))
@@ -1798,10 +1995,16 @@ def main():
     application.add_handler(CommandHandler("mispendientes", mis_pendientes))
     application.add_handler(CommandHandler("notificar", notificar))
     
+    # NUEVOS COMANDOS ADMINISTRATIVOS
+    application.add_handler(CommandHandler("cambiar_rol", cambiar_rol))
+    application.add_handler(CommandHandler("cambiar_estado", cambiar_estado))
+    
+    # Comandos para PDF
     application.add_handler(CommandHandler("crearpdf", iniciar_creacion_pdf))
     application.add_handler(CommandHandler("generarpdf", generar_pdf))
     application.add_handler(CommandHandler("cancelarpdf", cancelar_pdf))
     
+    # Manejadores de mensajes y callbacks
     application.add_handler(MessageHandler(filters.PHOTO, recibir_imagen_para_pdf))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_observacion))
     
@@ -1811,6 +2014,7 @@ def main():
     application.add_handler(CallbackQueryHandler(manejar_notificacion_boton, pattern="^(notificar_|cerrar_pendientes|cerrar_notificacion)"))
     application.add_handler(CallbackQueryHandler(tomar_recontacto, pattern="^(tomar_recontacto_|cerrar_mispendientes)"))
     
+    # Conversación para registro
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("registrar", registrar)],
         states={
@@ -1824,6 +2028,7 @@ def main():
     
     application.add_handler(conv_handler)
     
+    # Inicializar almacenamiento
     if 'llamadas_activas' not in application.bot_data:
         application.bot_data['llamadas_activas'] = {}
     if 'pendientes_notificacion' not in application.bot_data:
@@ -1835,6 +2040,6 @@ def main():
     logger.info(f"📊 Usando Google Sheets ID: {SPREADSHEET_ID}")
     
     application.run_polling()
-
+    
 if __name__ == '__main__':
     main()
