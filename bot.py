@@ -345,28 +345,23 @@ def formatear_datos_llamada(datos_llamada, es_recontacto=False):
 
 # ========== FUNCIONES DEL BOT ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Mensaje de bienvenida"""
+    """Mensaje de bienvenida según el rol del usuario"""
     user_id = update.effective_user.id
-
-
-    #---------- TEMPORAL!!!!!!!!!!!!!!!!
 
     # Temporal para debuggear
     logger.info("🔍 Verificando credenciales...")
     credentials_json = os.environ.get('GOOGLE_CREDENTIALS')
     if credentials_json:
-       logger.info("✅ GOOGLE_CREDENTIALS encontrada")
-       try:
-           creds_dict = json.loads(credentials_json)
-           logger.info(f"✅ Cuenta de servicio: {creds_dict.get('client_email', 'No encontrado')}")
-       except:
-           logger.error("❌ Error al parsear GOOGLE_CREDENTIALS")
+        logger.info("✅ GOOGLE_CREDENTIALS encontrada")
+        try:
+            creds_dict = json.loads(credentials_json)
+            logger.info(f"✅ Cuenta de servicio: {creds_dict.get('client_email', 'No encontrado')}")
+        except:
+            logger.error("❌ Error al parsear GOOGLE_CREDENTIALS")
     else:
-       logger.error("❌ GOOGLE_CREDENTIALS no encontrada")
+        logger.error("❌ GOOGLE_CREDENTIALS no encontrada")
 
     logger.info(f"🔍 SPREADSHEET_ID: {SPREADSHEET_ID}")
-
-#------ fin temporal!!!!!!!!!
     
     sheet = conectar_google_sheets()
     if sheet:
@@ -374,32 +369,54 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if worksheet_registros:
             rol = obtener_rol_usuario(worksheet_registros, user_id)
             if rol:
-                await update.message.reply_text(
-                    f"Hola 👋 Soy el bot de registro y gestión de llamadas.\n\n"
-                    f"Tu ID de Telegram es: {user_id}\n"
-                    f"Tu rol es: {rol}\n\n"
-                    "Comandos disponibles:\n"
-                    "/registrar - Iniciar proceso de registro\n"
-                    "/obtener - Obtener una llamada disponible\n"
-                    "/miestado - Ver tu estado de registro\n"
-                    "/misdatos - Ver tu llamada activa\n"
-                    "/completarllamada - Marcar llamada como completada\n"
-                    "/ayuda - Ver todos los comandos disponibles\n"
-                    "/start - Mostrar este mensaje"
-                )
+                if rol == "Supervisor":
+                    await update.message.reply_text(
+                        f"Hola 👋 Soy el bot de gestión de llamadas.\n\n"
+                        f"Tu ID de Telegram es: `{user_id}`\n"
+                        f"Tu rol es: *{rol}*\n\n"
+                        "📚 *Comandos disponibles para Supervisor:*\n\n"
+                        "/start - Mostrar este mensaje\n"
+                        "/registrar - Iniciar proceso de registro\n"
+                        "/miestado - Ver tu estado de registro\n"
+                        "/revisarpendientes - Ver llamadas NO CONTESTA\n"
+                        "/notificar [número] - Notificar a un agente para recontacto\n"
+                        "/cambiar_rol [cédula] [rol] - Cambiar rol de un usuario\n"
+                        "/cambiar_estado [cédula] [estado] - Cambiar estado de un usuario\n"
+                        "/crearpdf - Iniciar creación de PDF con imágenes\n"
+                        "/generarpdf - Generar PDF con las imágenes recibidas\n"
+                        "/cancelarpdf - Cancelar creación de PDF\n"
+                        "/ayuda - Mostrar ayuda detallada\n"
+                        "/cancelar - Cancelar el registro en proceso",
+                        parse_mode='Markdown'
+                    )
+                else:
+                    await update.message.reply_text(
+                        f"Hola 👋 Soy el bot de gestión de llamadas.\n\n"
+                        f"Tu ID de Telegram es: `{user_id}`\n"
+                        f"Tu rol es: *{rol}*\n\n"
+                        "📚 *Comandos disponibles para Agente:*\n\n"
+                        "/start - Mostrar este mensaje\n"
+                        "/registrar - Iniciar proceso de registro\n"
+                        "/obtener - Obtener una llamada disponible\n"
+                        "/misdatos - Ver tu llamada activa\n"
+                        "/completarllamada - Finalizar tu llamada actual\n"
+                        "/mispendientes - Ver tus recontactos pendientes\n"
+                        "/miestado - Consultar tu estado de registro\n"
+                        "/ayuda - Mostrar ayuda detallada\n"
+                        "/cancelar - Cancelar el registro en proceso",
+                        parse_mode='Markdown'
+                    )
                 return
     
+    # Si el usuario no está registrado o no se pudo obtener el rol
     await update.message.reply_text(
-        f"Hola 👋 Soy el bot de registro y gestión de llamadas.\n\n"
-        f"Tu ID de Telegram es: {user_id}\n\n"
-        "Comandos disponibles:\n"
-        "/registrar - Iniciar proceso de registro\n"
-        "/obtener - Obtener una llamada disponible\n"
-        "/miestado - Ver tu estado de registro\n"
-        "/misdatos - Ver tu llamada activa\n"
-        "/completarllamada - Marcar llamada como completada\n"
-        "/ayuda - Ver todos los comandos disponibles\n"
-        "/start - Mostrar este mensaje"
+        f"Hola 👋 Soy el bot de gestión de llamadas.\n\n"
+        f"Tu ID de Telegram es: `{user_id}`\n\n"
+        "⚠️ *No estás registrado en el sistema.*\n\n"
+        "Para registrarte, usa el comando:\n"
+        "/registrar\n\n"
+        "Si ya estás registrado, contacta al administrador.",
+        parse_mode='Markdown'
     )
 
 async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -415,36 +432,52 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if rol == "Supervisor":
         await update.message.reply_text(
-            "📚 *Comandos disponibles para Supervisor:*\n\n"
-            "/start - Mostrar mensaje de bienvenida\n"
-            "/registrar - Iniciar proceso de registro\n"
+            "📚 *COMANDOS PARA SUPERVISOR* 📚\n\n"
+            "*Gestión de Usuarios:*\n"
+            "/registrar - Registrar nuevo usuario\n"
             "/miestado - Ver tu estado de registro\n"
-            "/revisarpendientes - Ver llamadas NO CONTESTA\n"
-            "/notificar [número] - Notificar a un agente para recontacto\n"
             "/cambiar_rol [cédula] [rol] - Cambiar rol de un usuario\n"
-            "/cambiar_estado [cédula] [estado] - Cambiar estado de un usuario\n"
+            "/cambiar_estado [cédula] [estado] - Cambiar estado de un usuario\n\n"
+            "*Gestión de Llamadas:*\n"
+            "/revisarpendientes - Ver llamadas NO CONTESTA\n"
+            "/notificar [número] - Notificar a un agente para recontacto\n\n"
+            "*Gestión de PDF:*\n"
             "/crearpdf - Iniciar creación de PDF con imágenes\n"
             "/generarpdf - Generar PDF con las imágenes recibidas\n"
-            "/cancelarpdf - Cancelar creación de PDF\n"
+            "/cancelarpdf - Cancelar creación de PDF\n\n"
+            "*Otros:*\n"
+            "/start - Mostrar mensaje de bienvenida\n"
+            "/ayuda - Mostrar esta ayuda\n"
+            "/cancelar - Cancelar el registro en proceso",
+            parse_mode='Markdown'
+        )
+    elif rol == "Agente":
+        await update.message.reply_text(
+            "📚 *COMANDOS PARA AGENTE* 📚\n\n"
+            "*Gestión de Registro:*\n"
+            "/registrar - Iniciar proceso de registro\n"
+            "/miestado - Consultar tu estado de registro\n\n"
+            "*Gestión de Llamadas:*\n"
+            "/obtener - Obtener una llamada disponible\n"
+            "/misdatos - Ver tu llamada activa\n"
+            "/completarllamada - Finalizar tu llamada actual\n"
+            "/mispendientes - Ver tus recontactos pendientes\n\n"
+            "*Otros:*\n"
+            "/start - Mostrar mensaje de bienvenida\n"
             "/ayuda - Mostrar esta ayuda\n"
             "/cancelar - Cancelar el registro en proceso",
             parse_mode='Markdown'
         )
     else:
         await update.message.reply_text(
-            "📚 *Comandos disponibles para Agente:*\n\n"
-            "/start - Mostrar mensaje de bienvenida\n"
-            "/registrar - Iniciar proceso de registro\n"
-            "/obtener - Obtener una llamada disponible\n"
-            "/misdatos - Ver tu llamada activa\n"
-            "/completarllamada - Finalizar tu llamada actual\n"
-            "/mispendientes - Ver tus recontactos pendientes\n"
-            "/miestado - Consultar tu estado de registro\n"
-            "/ayuda - Mostrar esta ayuda\n"
-            "/cancelar - Cancelar el registro en proceso",
+            "📚 *COMANDOS DISPONIBLES* 📚\n\n"
+            "*Para registrarte:*\n"
+            "/registrar - Iniciar proceso de registro\n\n"
+            "*Una vez registrado:*\n"
+            "Los comandos disponibles dependerán de tu rol.\n\n"
+            "Contacta al administrador para más información.",
             parse_mode='Markdown'
         )
-
 
 async def registrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Inicia el proceso de registro"""
