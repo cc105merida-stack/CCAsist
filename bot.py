@@ -1825,7 +1825,7 @@ async def cambiarestado(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ Error al cambiar el estado: {e}"
         )
 
- async def cargar_estructuras_desde_sheets(worksheet_data, worksheet_registros, context):
+async def cargar_estructuras_desde_sheets(worksheet_data, worksheet_registros, context):
     """Carga todas las estructuras de datos desde Google Sheets"""
     try:
         # 1. Limpiar estructuras existentes
