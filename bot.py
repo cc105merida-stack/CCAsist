@@ -3,6 +3,7 @@ import os
 import gspread
 import img2pdf
 import tempfile
+import pytz
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -11,7 +12,7 @@ import warnings
 import json
 import logging
 
-# Configurar  logging
+# Configurar logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -33,6 +34,9 @@ if not TOKEN:
 if not SPREADSHEET_ID:
     logger.error("❌ SPREADSHEET_ID no está configurado en variables de entorno")
     exit(1)
+
+# Configurar zona horaria
+LOCAL_TZ = pytz.timezone('America/Caracas')  # GMT-4
 
 # ========== ESTADOS PARA LA CONVERSACIÓN ============
 NOMBRE, CEDULA, TELEFONO, ROL = range(4)
@@ -56,6 +60,12 @@ ROLES = {
 }
 
 # ========== FUNCIONES AUXILIARES ============
+def obtener_hora_local():
+    """Obtiene la hora actual en la zona horaria local (GMT-4)"""
+    utc_now = datetime.now(pytz.UTC)
+    hora_local = utc_now.astimezone(LOCAL_TZ)
+    return hora_local
+
 def calcular_duracion(hora_asignacion, hora_completacion):
     """Calcula la duración entre dos horas en formato HH:MM:SS"""
     try:
@@ -217,9 +227,11 @@ def verificar_usuario_registrado(worksheet, cedula, telegram_id=None):
         return False
 
 def guardar_en_sheets(worksheet, nombre, cedula, telegram_id, telefono, rol):
-    """Guarda los datos en Google Sheets incluyendo el rol"""
+    """Guarda los datos en Google Sheets incluyendo el rol con hora local"""
     try:
-        fecha_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        hora_local = obtener_hora_local()
+        fecha_hora = hora_local.strftime("%Y-%m-%d %H:%M:%S")
+        
         estado = "ACTIVO"
         nueva_fila = [fecha_hora, nombre, cedula, str(telegram_id), telefono, estado, rol]
         worksheet.append_row(nueva_fila)
@@ -254,9 +266,11 @@ def actualizar_estado_llamada(data_worksheet, fila_numero, nuevo_estado):
         return False
 
 def registrar_hora_asignacion(data_worksheet, fila_numero):
-    """Registra la hora actual en la columna HORA (columna Q - índice 17)"""
+    """Registra la hora actual en la columna HORA (columna Q - índice 17) con zona horaria local"""
     try:
-        hora_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        hora_local = obtener_hora_local()
+        hora_actual = hora_local.strftime("%Y-%m-%d %H:%M:%S")
+        
         data_worksheet.update_cell(fila_numero, 17, hora_actual)
         logger.info(f"✅ Hora registrada: fila {fila_numero} -> {hora_actual}")
         return hora_actual
@@ -282,7 +296,8 @@ def registrar_duracion_y_observacion(data_worksheet, fila_numero, resultado, obs
             data_worksheet.update_cell(fila_numero, 3, estado_validacion)
         
         if hora_asignacion:
-            hora_completacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            hora_local = obtener_hora_local()
+            hora_completacion = hora_local.strftime("%Y-%m-%d %H:%M:%S")
             duracion = calcular_duracion(hora_asignacion, hora_completacion)
             data_worksheet.update_cell(fila_numero, 18, duracion)
         
@@ -321,6 +336,10 @@ def formatear_datos_llamada(datos_llamada, es_recontacto=False):
     else:
         titulo = "📞 LLAMADA ASIGNADA 📞"
     
+    # Obtener hora local para mostrar
+    hora_local = obtener_hora_local()
+    hora_mostrar = hora_local.strftime('%H:%M:%S')
+    
     mensaje = f"{titulo}\n\n"
     mensaje += f"📋 FOLIO SIAC: {folio}\n"
     mensaje += f"🏷️ TIPO DE VENTA: {tipo_venta}\n"
@@ -339,7 +358,7 @@ def formatear_datos_llamada(datos_llamada, es_recontacto=False):
         mensaje += f"\n📝 OBSERVACIÓN PREVIA:\n{observacion_existente}\n"
     
     mensaje += f"\n✅ La llamada ha sido marcada como EN PROCESO.\n"
-    mensaje += f"🕐 Hora de asignación: {datetime.now().strftime('%H:%M:%S')}\n\n"
+    mensaje += f"🕐 Hora de asignación: {hora_mostrar}\n\n"
     mensaje += f"Cuando termines, usa /completarllamada para registrar el resultado."
     
     return mensaje
@@ -2158,7 +2177,7 @@ async def cancelar_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Usa /crearpdf para comenzar."
         )
 
-# ========== CONFIGURACIÓN Y 
+# ========== CONFIGURACIÓN Y EJECUCIÓN DEL BOT ==========
 def main():
     """Función principal que inicia el bot"""
     logger.info("🤖 Iniciando bot...")
