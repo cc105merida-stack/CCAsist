@@ -422,6 +422,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         "/completarllamada - Finalizar tu llamada actual\n"
                         "/mispendientes - Ver tus recontactos pendientes\n"
                         "/miestado - Consultar tu estado de registro\n"
+                        "/crearpdf - Iniciar creación de PDF con imágenes\n"
+                        "/generarpdf - Generar PDF con las imágenes recibidas\n"
+                        "/cancelarpdf - Cancelar creación de PDF\n"
                         "/ayuda - Mostrar ayuda detallada\n"
                         "/cancelar - Cancelar el registro en proceso",
                         parse_mode='Markdown'
@@ -482,6 +485,10 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/misdatos - Ver tu llamada activa\n"
             "/completarllamada - Finalizar tu llamada actual\n"
             "/mispendientes - Ver tus recontactos pendientes\n\n"
+            "*Gestión de PDF:*\n"
+            "/crearpdf - Iniciar creación de PDF con imágenes\n"
+            "/generarpdf - Generar PDF con las imágenes recibidas\n"
+            "/cancelarpdf - Cancelar creación de PDF\n\n"
             "*Otros:*\n"
             "/start - Mostrar mensaje de bienvenida\n"
             "/ayuda - Mostrar esta ayuda\n"
@@ -2007,18 +2014,19 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ========== FUNCIONES PARA PDF ==========
 async def iniciar_creacion_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Inicia el proceso de creación de PDF (solo Supervisores)"""
+    """Inicia el proceso de creación de PDF (disponible para todos los usuarios registrados)"""
     telegram_id = update.effective_user.id
     
+    # Verificar que el usuario esté registrado
     sheet = conectar_google_sheets()
     if sheet:
         worksheet_registros = obtener_hoja_registros(sheet)
         if worksheet_registros:
-            rol = obtener_rol_usuario(worksheet_registros, telegram_id)
-            if rol != "Supervisor":
+            registros = obtener_registros_por_telegram_id(worksheet_registros, telegram_id)
+            if not registros:
                 await update.message.reply_text(
-                    "❌ No tienes permisos para usar este comando.\n"
-                    "Este comando solo está disponible para Supervisores."
+                    "❌ No estás registrado en el sistema.\n\n"
+                    "Por favor, regístrate primero usando el comando /registrar"
                 )
                 return
     
@@ -2035,7 +2043,7 @@ async def iniciar_creacion_pdf(update: Update, context: ContextTypes.DEFAULT_TYP
         "✅ *Listo para recibir imágenes* - Envía la primera imagen:",
         parse_mode='Markdown'
     )
-
+    
 async def recibir_imagen_para_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Recibe imágenes para el PDF"""
     telegram_id = update.effective_user.id
@@ -2079,18 +2087,19 @@ async def recibir_imagen_para_pdf(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text(f"❌ Error al descargar la imagen: {e}")
 
 async def generar_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Genera el PDF con las imágenes recibidas"""
+    """Genera el PDF con las imágenes recibidas (disponible para todos los usuarios registrados)"""
     telegram_id = update.effective_user.id
     
+    # Verificar que el usuario esté registrado
     sheet = conectar_google_sheets()
     if sheet:
         worksheet_registros = obtener_hoja_registros(sheet)
         if worksheet_registros:
-            rol = obtener_rol_usuario(worksheet_registros, telegram_id)
-            if rol != "Supervisor":
+            registros = obtener_registros_por_telegram_id(worksheet_registros, telegram_id)
+            if not registros:
                 await update.message.reply_text(
-                    "❌ No tienes permisos para usar este comando.\n"
-                    "Este comando solo está disponible para Supervisores."
+                    "❌ No estás registrado en el sistema.\n\n"
+                    "Por favor, regístrate primero usando el comando /registrar"
                 )
                 return
     
@@ -2142,20 +2151,69 @@ async def generar_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
         del imagenes_para_pdf[telegram_id]
-
+        
+    if telegram_id not in imagenes_para_pdf or not imagenes_para_pdf[telegram_id]:
+        await update.message.reply_text(
+            "❌ No tienes imágenes guardadas para crear un PDF.\n\n"
+            "Usa /crearpdf para comenzar a enviar imágenes."
+        )
+        return
+    
+    imagenes = imagenes_para_pdf[telegram_id]
+    
+    await update.message.reply_text(
+        f"📄 Generando PDF con {len(imagenes)} imágenes...\n"
+        f"Por favor espera un momento."
+    )
+    
+    try:
+        pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        pdf_path.close()
+        
+        with open(pdf_path.name, "wb") as f:
+            f.write(img2pdf.convert(imagenes))
+        
+        with open(pdf_path.name, 'rb') as pdf_file:
+            await update.message.reply_document(
+                document=pdf_file,
+                filename=f"documento_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                caption=f"✅ PDF generado con {len(imagenes)} imágenes.\nFecha: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+            )
+        
+        for img_path in imagenes:
+            try:
+                os.unlink(img_path)
+            except:
+                pass
+        try:
+            os.unlink(pdf_path.name)
+        except:
+            pass
+        
+        del imagenes_para_pdf[telegram_id]
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error al generar el PDF: {e}")
+        for img_path in imagenes:
+            try:
+                os.unlink(img_path)
+            except:
+                pass
+        del imagenes_para_pdf[telegram_id]
 async def cancelar_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Cancela la creación del PDF y limpia las imágenes"""
+    """Cancela la creación del PDF y limpia las imágenes (disponible para todos los usuarios registrados)"""
     telegram_id = update.effective_user.id
     
+    # Verificar que el usuario esté registrado
     sheet = conectar_google_sheets()
     if sheet:
         worksheet_registros = obtener_hoja_registros(sheet)
         if worksheet_registros:
-            rol = obtener_rol_usuario(worksheet_registros, telegram_id)
-            if rol != "Supervisor":
+            registros = obtener_registros_por_telegram_id(worksheet_registros, telegram_id)
+            if not registros:
                 await update.message.reply_text(
-                    "❌ No tienes permisos para usar este comando.\n"
-                    "Este comando solo está disponible para Supervisores."
+                    "❌ No estás registrado en el sistema.\n\n"
+                    "Por favor, regístrate primero usando el comando /registrar"
                 )
                 return
     
