@@ -1131,10 +1131,16 @@ async def guardar_siac_buscar(update: Update, context: ContextTypes.DEFAULT_TYPE
     return SELECCION_CLIENTE
 
 async def mostrar_pagina_siac(update: Update, context: ContextTypes.DEFAULT_TYPE, telegram_id: int, pagina: int = 0):
+    """Muestra una página de resultados con botones"""
     data = busqueda_siac.get(telegram_id)
     if not data:
-        await update.message.reply_text("❌ Sesión expirada. Inicia nuevamente con /guardarSIAC.")
+        # Si es un callback, editar; si no, enviar nuevo mensaje
+        if update.callback_query:
+            await update.callback_query.edit_message_text("❌ Sesión expirada. Inicia nuevamente con /guardarSIAC.")
+        else:
+            await update.message.reply_text("❌ Sesión expirada. Inicia nuevamente con /guardarSIAC.")
         return ConversationHandler.END
+
     resultados = data['resultados']
     total = len(resultados)
     items_por_pagina = 10
@@ -1157,10 +1163,13 @@ async def mostrar_pagina_siac(update: Update, context: ContextTypes.DEFAULT_TYPE
         keyboard.append(nav)
     keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="siac_cancelar")])
     reply_markup = InlineKeyboardMarkup(keyboard)
-    if hasattr(update, 'callback_query'):
+
+    # Determinar si el update es un callback query (para editar) o un mensaje normal
+    if update.callback_query is not None:
         await update.callback_query.edit_message_text(mensaje, parse_mode='Markdown', reply_markup=reply_markup)
     else:
         await update.message.reply_text(mensaje, parse_mode='Markdown', reply_markup=reply_markup)
+
 
 async def manejar_callback_siac(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
