@@ -175,9 +175,9 @@ def obtener_llamadas_pendientes(data_worksheet):
         pendientes = []
         
         for i, fila in enumerate(todos_los_registros[1:], start=2):
-            if len(fila) >= 20:
-                estado2 = fila[18] if len(fila) > 18 else ""
-                agente_asignado = fila[19] if len(fila) > 19 else ""
+            if len(fila) >= 22:  # Ahora tenemos 22 columnas (0-21)
+                estado2 = fila[20] if len(fila) > 20 else ""      # Columna U
+                agente_asignado = fila[21] if len(fila) > 21 else ""  # Columna V
                 
                 if estado2 == "NO CONTESTA" and (agente_asignado == "" or agente_asignado is None):
                     pendientes.append({
@@ -186,7 +186,7 @@ def obtener_llamadas_pendientes(data_worksheet):
                         'nombre_cliente': fila[8] if len(fila) > 8 else "No disponible",
                         'celular_cliente': fila[9] if len(fila) > 9 else "No disponible",
                         'validador': fila[1] if len(fila) > 1 else "No asignado",
-                        'hora_asignacion': fila[16] if len(fila) > 16 else "No registrada",
+                        'hora_asignacion': fila[18] if len(fila) > 18 else "No registrada",  # Columna S
                         'datos_completos': fila
                     })
         
@@ -201,8 +201,8 @@ def obtener_siguiente_llamada_disponible(data_worksheet):
         todos_los_registros = data_worksheet.get_all_values()
         
         for i, fila in enumerate(todos_los_registros[1:], start=2):
-            if len(fila) >= 19:
-                estado2 = fila[18] if len(fila) > 18 else ""
+            if len(fila) >= 21:  # Al menos hasta ESTADO2
+                estado2 = fila[20] if len(fila) > 20 else ""  # Columna U
                 if estado2 == "" or estado2 == "DISPONIBLE":
                     return i, fila
         
@@ -256,9 +256,9 @@ def obtener_registros_por_telegram_id(worksheet, telegram_id):
         return []
 
 def actualizar_estado_llamada(data_worksheet, fila_numero, nuevo_estado):
-    """Actualiza el ESTADO2 de una llamada específica (columna S - índice 19)"""
+    """Actualiza el ESTADO2 de una llamada específica (columna U - índice 21)"""
     try:
-        data_worksheet.update_cell(fila_numero, 19, nuevo_estado)
+        data_worksheet.update_cell(fila_numero, 21, nuevo_estado)  # Columna U (índice 21)
         logger.info(f"✅ Estado actualizado: fila {fila_numero} -> {nuevo_estado}")
         return True
     except Exception as e:
@@ -266,12 +266,12 @@ def actualizar_estado_llamada(data_worksheet, fila_numero, nuevo_estado):
         return False
 
 def registrar_hora_asignacion(data_worksheet, fila_numero):
-    """Registra la hora actual en la columna HORA (columna Q - índice 17) con zona horaria local"""
+    """Registra la hora actual en la columna HORA (columna S - índice 19)"""
     try:
         hora_local = obtener_hora_local()
         hora_actual = hora_local.strftime("%Y-%m-%d %H:%M:%S")
         
-        data_worksheet.update_cell(fila_numero, 17, hora_actual)
+        data_worksheet.update_cell(fila_numero, 19, hora_actual)  # Columna S (índice 19)
         logger.info(f"✅ Hora registrada: fila {fila_numero} -> {hora_actual}")
         return hora_actual
     except Exception as e:
@@ -290,24 +290,24 @@ def registrar_duracion_y_observacion(data_worksheet, fila_numero, resultado, obs
         else:
             nuevo_estado = "FINALIZADA"
         
-        data_worksheet.update_cell(fila_numero, 19, nuevo_estado)
+        data_worksheet.update_cell(fila_numero, 21, nuevo_estado)  # Columna U
         
         if estado_validacion:
-            data_worksheet.update_cell(fila_numero, 3, estado_validacion)
+            data_worksheet.update_cell(fila_numero, 3, estado_validacion)  # Columna C
         
         if hora_asignacion:
             hora_local = obtener_hora_local()
             hora_completacion = hora_local.strftime("%Y-%m-%d %H:%M:%S")
             duracion = calcular_duracion(hora_asignacion, hora_completacion)
-            data_worksheet.update_cell(fila_numero, 18, duracion)
+            data_worksheet.update_cell(fila_numero, 20, duracion)  # Columna T (índice 20)
         
         if observacion:
-            obs_actual = data_worksheet.cell(fila_numero, 16).value or ""
+            obs_actual = data_worksheet.cell(fila_numero, 17).value or ""  # Columna R (índice 17)
             if obs_actual:
                 nueva_obs = f"{obs_actual} | {observacion}"
             else:
                 nueva_obs = observacion
-            data_worksheet.update_cell(fila_numero, 16, nueva_obs)
+            data_worksheet.update_cell(fila_numero, 17, nueva_obs)  # Columna R
         
         return True
     except Exception as e:
@@ -327,9 +327,11 @@ def formatear_datos_llamada(datos_llamada, es_recontacto=False):
     celular_referencia = datos_llamada[10] if len(datos_llamada) > 10 and datos_llamada[10] else "No disponible"
     correo = datos_llamada[11] if len(datos_llamada) > 11 and datos_llamada[11] else "No disponible"
     direccion = datos_llamada[12] if len(datos_llamada) > 12 and datos_llamada[12] else "No disponible"
-    paquete = datos_llamada[13] if len(datos_llamada) > 13 and datos_llamada[13] else "No disponible"
-    costo = datos_llamada[14] if len(datos_llamada) > 14 and datos_llamada[14] else "No disponible"
-    observacion_existente = datos_llamada[15] if len(datos_llamada) > 15 and datos_llamada[15] else None
+    precio_paquete = datos_llamada[13] if len(datos_llamada) > 13 and datos_llamada[13] else "No disponible"
+    velocidad = datos_llamada[14] if len(datos_llamada) > 14 and datos_llamada[14] else "No disponible"
+    gastos_instalacion = datos_llamada[15] if len(datos_llamada) > 15 and datos_llamada[15] else "No disponible"
+    beneficios = datos_llamada[16] if len(datos_llamada) > 16 and datos_llamada[16] else "No disponible"
+    observacion_existente = datos_llamada[17] if len(datos_llamada) > 17 and datos_llamada[17] else None
     
     if es_recontacto:
         titulo = "🔄 RECONTACTO ASIGNADO 🔄"
@@ -351,8 +353,10 @@ def formatear_datos_llamada(datos_llamada, es_recontacto=False):
     mensaje += f"📞 CELULAR REFERENCIA: {celular_referencia}\n"
     mensaje += f"✉️ CORREO: {correo}\n"
     mensaje += f"📍 DIRECCIÓN: {direccion}\n"
-    mensaje += f"📦 PAQUETE: {paquete}\n"
-    mensaje += f"💰 COSTO DEL PAQUETE: {costo}\n"
+    mensaje += f"💰 PRECIO DEL PAQUETE: {precio_paquete}\n"
+    mensaje += f"⚡ VELOCIDAD: {velocidad}\n"
+    mensaje += f"🔧 GASTOS DE INSTALACIÓN: {gastos_instalacion}\n"
+    mensaje += f"🎁 BENEFICIOS: {beneficios}\n"
     
     if observacion_existente:
         mensaje += f"\n📝 OBSERVACIÓN PREVIA:\n{observacion_existente}\n"
@@ -796,8 +800,12 @@ async def mis_datos_activos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     celular_cliente = datos[9] if len(datos) > 9 else "No disponible"
     correo = datos[11] if len(datos) > 11 and datos[11] else "No disponible"
     direccion = datos[12] if len(datos) > 12 and datos[12] else "No disponible"
+    precio_paquete = datos[13] if len(datos) > 13 and datos[13] else "No disponible"
+    velocidad = datos[14] if len(datos) > 14 and datos[14] else "No disponible"
+    gastos_instalacion = datos[15] if len(datos) > 15 and datos[15] else "No disponible"
+    beneficios = datos[16] if len(datos) > 16 and datos[16] else "No disponible"
     hora_asignacion = llamada_activa.get('hora_asignacion', 'No registrada')
-    observacion_existente = datos[15] if len(datos) > 15 and datos[15] else None
+    observacion_existente = datos[17] if len(datos) > 17 and datos[17] else None
     
     if hora_asignacion != "No registrada":
         try:
@@ -816,6 +824,10 @@ async def mis_datos_activos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📱 CELULAR CLIENTE: {celular_cliente}\n"
         f"✉️ CORREO: {correo}\n"
         f"📍 DIRECCIÓN: {direccion}\n"
+        f"💰 PRECIO DEL PAQUETE: {precio_paquete}\n"
+        f"⚡ VELOCIDAD: {velocidad}\n"
+        f"🔧 GASTOS DE INSTALACIÓN: {gastos_instalacion}\n"
+        f"🎁 BENEFICIOS: {beneficios}\n"
         f"🕐 Hora de asignación: {hora_mostrar}\n"
     )
     
@@ -1272,7 +1284,7 @@ async def manejar_notificacion_boton(update: Update, context: ContextTypes.DEFAU
         worksheet_data = obtener_hoja_data(sheet)
         if worksheet_data:
             try:
-                worksheet_data.update_cell(llamada['fila'], 20, llamada['validador'])
+                worksheet_data.update_cell(llamada['fila'], 22, llamada['validador'])  # Columna V (índice 22)
                 logger.info(f"✅ Agente asignado guardado: {llamada['validador']} en fila {llamada['fila']}")
             except Exception as e:
                 logger.error(f"Error al guardar agente asignado: {e}")
@@ -1436,7 +1448,7 @@ async def tomar_recontacto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         fila_num = llamada['fila']
-        estado_actual = worksheet_data.cell(fila_num, 19).value
+        estado_actual = worksheet_data.cell(fila_num, 21).value  # Columna U (índice 21)
         
         if estado_actual != "NO CONTESTA":
             await query.edit_message_text(
@@ -1459,7 +1471,7 @@ async def tomar_recontacto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if actualizar_estado_llamada(worksheet_data, fila_num, "EN PROCESO"):
             try:
-                worksheet_data.update_cell(fila_num, 20, "")
+                worksheet_data.update_cell(fila_num, 22, "")  # Columna V (índice 22)
                 logger.info(f"✅ Agente asignado limpiado en fila {fila_num}")
             except Exception as e:
                 logger.error(f"Error al limpiar agente asignado: {e}")
@@ -1869,8 +1881,8 @@ async def cargar_estructuras_desde_sheets(worksheet_data, worksheet_registros, c
         # 2. Cargar llamadas activas (EN PROCESO)
         todas_las_filas = worksheet_data.get_all_values()
         for i, fila in enumerate(todas_las_filas[1:], start=2):
-            if len(fila) >= 19:
-                estado2 = fila[18] if len(fila) > 18 else ""
+            if len(fila) >= 21:
+                estado2 = fila[20] if len(fila) > 20 else ""  # Columna U
                 validador = fila[1] if len(fila) > 1 else ""
                 
                 # Si está EN PROCESO, buscar quién la tomó
@@ -1889,7 +1901,7 @@ async def cargar_estructuras_desde_sheets(worksheet_data, worksheet_registros, c
                             'folio': fila[3] if len(fila) > 3 else "Sin folio",
                             'datos': fila,
                             'nombre_usuario': validador,
-                            'hora_asignacion': fila[16] if len(fila) > 16 else "No registrada",
+                            'hora_asignacion': fila[18] if len(fila) > 18 else "No registrada",  # Columna S
                             'es_recontacto': False
                         }
                         if 'llamadas_activas' not in context.bot_data:
@@ -1908,9 +1920,9 @@ async def cargar_estructuras_desde_sheets(worksheet_data, worksheet_registros, c
         # 4. Cargar recontactos pendientes (NO CONTESTA con agente asignado)
         todas_las_filas = worksheet_data.get_all_values()
         for i, fila in enumerate(todas_las_filas[1:], start=2):
-            if len(fila) >= 20:
-                estado2 = fila[18] if len(fila) > 18 else ""
-                agente_asignado = fila[19] if len(fila) > 19 else ""
+            if len(fila) >= 22:
+                estado2 = fila[20] if len(fila) > 20 else ""
+                agente_asignado = fila[21] if len(fila) > 21 else ""
                 
                 if estado2 == "NO CONTESTA" and agente_asignado and agente_asignado != "":
                     # Buscar el Telegram ID del agente
@@ -1929,7 +1941,7 @@ async def cargar_estructuras_desde_sheets(worksheet_data, worksheet_registros, c
                         'nombre_cliente': fila[8] if len(fila) > 8 else "No disponible",
                         'celular_cliente': fila[9] if len(fila) > 9 else "No disponible",
                         'validador_original': agente_asignado,
-                        'hora_asignacion': fila[16] if len(fila) > 16 else "No registrada",
+                        'hora_asignacion': fila[18] if len(fila) > 18 else "No registrada",
                         'agente_telegram_id': telegram_id
                     }
                     if 'recontactos_pendientes' not in context.bot_data:
@@ -2043,7 +2055,7 @@ async def iniciar_creacion_pdf(update: Update, context: ContextTypes.DEFAULT_TYP
         "✅ *Listo para recibir imágenes* - Envía la primera imagen:",
         parse_mode='Markdown'
     )
-    
+
 async def recibir_imagen_para_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Recibe imágenes para el PDF"""
     telegram_id = update.effective_user.id
@@ -2151,55 +2163,7 @@ async def generar_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
         del imagenes_para_pdf[telegram_id]
-        
-    if telegram_id not in imagenes_para_pdf or not imagenes_para_pdf[telegram_id]:
-        await update.message.reply_text(
-            "❌ No tienes imágenes guardadas para crear un PDF.\n\n"
-            "Usa /crearpdf para comenzar a enviar imágenes."
-        )
-        return
-    
-    imagenes = imagenes_para_pdf[telegram_id]
-    
-    await update.message.reply_text(
-        f"📄 Generando PDF con {len(imagenes)} imágenes...\n"
-        f"Por favor espera un momento."
-    )
-    
-    try:
-        pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
-        pdf_path.close()
-        
-        with open(pdf_path.name, "wb") as f:
-            f.write(img2pdf.convert(imagenes))
-        
-        with open(pdf_path.name, 'rb') as pdf_file:
-            await update.message.reply_document(
-                document=pdf_file,
-                filename=f"documento_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                caption=f"✅ PDF generado con {len(imagenes)} imágenes.\nFecha: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
-            )
-        
-        for img_path in imagenes:
-            try:
-                os.unlink(img_path)
-            except:
-                pass
-        try:
-            os.unlink(pdf_path.name)
-        except:
-            pass
-        
-        del imagenes_para_pdf[telegram_id]
-        
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error al generar el PDF: {e}")
-        for img_path in imagenes:
-            try:
-                os.unlink(img_path)
-            except:
-                pass
-        del imagenes_para_pdf[telegram_id]
+
 async def cancelar_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancela la creación del PDF y limpia las imágenes (disponible para todos los usuarios registrados)"""
     telegram_id = update.effective_user.id
