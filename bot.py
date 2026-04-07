@@ -24,8 +24,8 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # ========== CONFIGURACIÓN DESDE VARIABLES DE ENTORNO ==========
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
-//SPREADSHEET_ID = "1XHRqlZHvHfxg2g5CqrZZU6_Bnjt3AaNcF4YZkO1wcXk"
-//SPREADSHEET_ID = "1YUTaWS-_2GPghdv-bl_XU3vHY2GghtD-k4FN2UZWQHs"
+#    SPREADSHEET_ID = "1XHRqlZHvHfxg2g5CqrZZU6_Bnjt3AaNcF4YZkO1wcXk"
+SPREADSHEET_ID = "1YUTaWS-_2GPghdv-bl_XU3vHY2GghtD-k4FN2UZWQHs"
 
 if not TOKEN:
     logger.error("❌ TELEGRAM_TOKEN no está configurado en variables de entorno")
