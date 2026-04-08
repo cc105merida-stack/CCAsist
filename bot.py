@@ -252,18 +252,20 @@ def registrar_duracion_y_observacion(data_worksheet, fila_numero, resultado, obs
             nuevo_estado = "RECHAZADA"
         else:
             nuevo_estado = "FINALIZADA"
-        data_worksheet.update_cell(fila_numero, 21, nuevo_estado)
+        data_worksheet.update_cell(fila_numero, 21, nuevo_estado)  # Columna U
         if estado_validacion:
-            data_worksheet.update_cell(fila_numero, 3, estado_validacion)
+            data_worksheet.update_cell(fila_numero, 3, estado_validacion)  # Columna C
         if hora_asignacion:
             hora_local = obtener_hora_local()
             hora_completacion = hora_local.strftime("%Y-%m-%d %H:%M:%S")
             duracion = calcular_duracion(hora_asignacion, hora_completacion)
-            data_worksheet.update_cell(fila_numero, 20, duracion)
+            data_worksheet.update_cell(fila_numero, 20, duracion)  # Columna T
         if observacion:
-            obs_actual = data_worksheet.cell(fila_numero, 17).value or ""
+            # Leer observación actual desde la columna R (índice 18)
+            obs_actual = data_worksheet.cell(fila_numero, 18).value or ""
             nueva_obs = f"{obs_actual} | {observacion}" if obs_actual else observacion
-            data_worksheet.update_cell(fila_numero, 17, nueva_obs)
+            # Guardar en la columna R (índice 18)
+            data_worksheet.update_cell(fila_numero, 18, nueva_obs)
         return True
     except Exception as e:
         logger.error(f"Error al registrar duración y observación: {e}")
