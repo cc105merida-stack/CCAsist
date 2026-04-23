@@ -24,7 +24,6 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # ========== CONFIGURACIÓN DESDE VARIABLES DE ENTORNO ==========
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
-#SPREADSHEET_ID = "1XHRqlZHvHfxg2g5CqrZZU6_Bnjt3AaNcF4YZkO1wcXk"
 SPREADSHEET_ID = "1YUTaWS-_2GPghdv-bl_XU3vHY2GghtD-k4FN2UZWQHs"
 
 if not TOKEN:
@@ -224,7 +223,7 @@ def obtener_registros_por_telegram_id(worksheet, telegram_id):
 
 def actualizar_estado_llamada(data_worksheet, fila_numero, nuevo_estado):
     try:
-        data_worksheet.update_cell(fila_numero, 21, nuevo_estado)
+        data_worksheet.update_cell(fila_numero, 21, nuevo_estado)  # Columna U
         logger.info(f"✅ Estado actualizado: fila {fila_numero} -> {nuevo_estado}")
         return True
     except Exception as e:
@@ -235,11 +234,30 @@ def registrar_hora_asignacion(data_worksheet, fila_numero):
     try:
         hora_local = obtener_hora_local()
         hora_actual = hora_local.strftime("%Y-%m-%d %H:%M:%S")
-        data_worksheet.update_cell(fila_numero, 19, hora_actual)
+        data_worksheet.update_cell(fila_numero, 19, hora_actual)  # Columna S
         logger.info(f"✅ Hora registrada: fila {fila_numero} -> {hora_actual}")
         return hora_actual
     except Exception as e:
         logger.error(f"❌ Error al registrar hora de asignación: {e}")
+        return None
+
+def incrementar_intentos(data_worksheet, fila_numero):
+    """Incrementa el contador de intentos (columna AN, índice 40)"""
+    try:
+        # Leer valor actual (columna AN = índice 40 en 1-based)
+        valor_actual = data_worksheet.cell(fila_numero, 40).value
+        if valor_actual is None or valor_actual == "":
+            nuevo_valor = 1
+        else:
+            try:
+                nuevo_valor = int(valor_actual) + 1
+            except ValueError:
+                nuevo_valor = 1
+        data_worksheet.update_cell(fila_numero, 40, nuevo_valor)
+        logger.info(f"✅ Intentos incrementados: fila {fila_numero} -> {nuevo_valor}")
+        return nuevo_valor
+    except Exception as e:
+        logger.error(f"❌ Error al incrementar intentos: {e}")
         return None
 
 def registrar_duracion_y_observacion(data_worksheet, fila_numero, resultado, observacion="", hora_asignacion=None, estado_validacion=None):
@@ -526,6 +544,10 @@ async def obtener_llamada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not hora_asignacion:
         await update.message.reply_text("❌ Error al registrar la hora de asignación.")
         return
+    
+    # Incrementar contador de intentos
+    incrementar_intentos(worksheet_data, fila_num)
+    
     if actualizar_estado_llamada(worksheet_data, fila_num, "EN PROCESO"):
         folio_siac = datos_llamada[3] if len(datos_llamada) > 3 else "Sin folio"
         llamadas_activas.usuarios_activos[telegram_id] = {
@@ -835,7 +857,7 @@ async def manejar_notificacion_boton(update: Update, context: ContextTypes.DEFAU
         try:
             await context.bot.send_message(chat_id=int(agente_telegram_id), text=mensaje_notificacion, reply_markup=reply_markup)
             mensaje_exito = (f"✅ Notificación enviada al agente {llamada['validador']}\n\n📱 Cliente: {llamada['celular_cliente']}\n👤 Nombre: {llamada['nombre_cliente']}\n"
-                             f"📋 Folio: {llamada['folio']}\n\nLa llamada ha sido eliminada de la lista de pendientes.\nEl agente recibió un botón para tomar la llamada.\n"
+                             f"📋 Folio: {llamada['folio']}\n\nLa llamada ha sido eliminada da la lista de pendientes.\nEl agente recibió un botón para tomar la llamada.\n"
                              f"También puede usar /mispendientes para ver todas sus llamadas pendientes.")
             close_keyboard = [[InlineKeyboardButton("❌ Cerrar", callback_data="cerrar_notificacion")]]
             await query.edit_message_text(mensaje_exito, reply_markup=InlineKeyboardMarkup(close_keyboard))
@@ -900,6 +922,10 @@ async def tomar_recontacto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not hora_asignacion:
             await query.edit_message_text("❌ Error al registrar la hora de asignación.")
             return
+        
+        # Incrementar contador de intentos
+        incrementar_intentos(worksheet_data, fila_num)
+        
         if actualizar_estado_llamada(worksheet_data, fila_num, "EN PROCESO"):
             try:
                 worksheet_data.update_cell(fila_num, 22, "")  # Limpiar AGENTE_ASIGNADO
