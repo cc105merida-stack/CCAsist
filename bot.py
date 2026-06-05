@@ -576,10 +576,9 @@ async def obtener_llamada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not hora_asignacion:
         await update.message.reply_text("❌ Error al registrar la hora de asignación.")
         return
-    
-    # Incrementar contador de intentos
+
     incrementar_intentos(worksheet_data, fila_num)
-    
+
     if actualizar_estado_llamada(worksheet_data, fila_num, "EN PROCESO"):
         folio_siac = datos_llamada[3] if len(datos_llamada) > 3 else "Sin folio"
         llamadas_activas.usuarios_activos[telegram_id] = {
@@ -589,91 +588,32 @@ async def obtener_llamada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if 'llamadas_activas' not in context.bot_data:
             context.bot_data['llamadas_activas'] = {}
         context.bot_data['llamadas_activas'][str(telegram_id)] = llamadas_activas.usuarios_activos[telegram_id]
-        
+
         mensaje = formatear_datos_llamada(datos_llamada, es_recontacto=False)
-        await update.message.reply_text(mensaje)
-        
+
+        # ===== ENLACES DE DRIVE (sin descarga) =====
+        url_imagen1 = datos_llamada[24] if len(datos_llamada) > 24 and datos_llamada[24] else None
+        url_imagen2 = datos_llamada[25] if len(datos_llamada) > 25 and datos_llamada[25] else None
+
+        if url_imagen1 or url_imagen2:
+            mensaje += "\n📎 *Documentos adjuntos disponibles:*\n"
+            if url_imagen1:
+                mensaje += f"• 📄 [Registro SIAC]({url_imagen1})\n"
+            if url_imagen2:
+                mensaje += f"• 📸 [Foto o Captura del Contact Center]({url_imagen2})\n"
+            mensaje += "\n_Haz clic en los enlaces para abrir los documentos._"
+
+        await update.message.reply_text(mensaje, parse_mode='Markdown')
+        # ===========================================
+
         try:
             worksheet_data.update_cell(fila_num, 2, nombre_usuario)
             logger.info(f"✅ Validador actualizado: {nombre_usuario} en fila {fila_num}")
         except Exception as e:
             logger.error(f"❌ Error al actualizar validador: {e}")
-
-        # ========== ENVÍO DE ARCHIVOS ADJUNTOS DESDE DRIVE ==========
-        # ========== ENVÍO DE ARCHIVOS ADJUNTOS DESDE DRIVE ==========
-        try:
-            # Verificar que datos_llamada tenga suficientes elementos
-            if len(datos_llamada) > 24:
-                url_imagen1 = datos_llamada[24] if datos_llamada[24] else None
-                url_imagen2 = datos_llamada[25] if len(datos_llamada) > 25 and datos_llamada[25] else None
-            else:
-                url_imagen1 = url_imagen2 = None
-
-            if url_imagen1 or url_imagen2:
-                drive_service = obtener_drive_service()
-                if drive_service:
-                    # IMAGEN1 (Registro SIAC)
-                    if url_imagen1:
-                        file_id = extraer_id_drive(url_imagen1)
-                        if file_id:
-                            temp_path = tempfile.NamedTemporaryFile(delete=False)
-                            temp_path.close()
-                            try:
-                                request = drive_service.files().get_media(fileId=file_id)
-                                with open(temp_path.name, 'wb') as f:
-                                    downloader = MediaIoBaseDownload(f, request)
-                                    done = False
-                                    while not done:
-                                        status, done = downloader.next_chunk()
-                                with open(temp_path.name, 'rb') as doc:
-                                    await update.message.reply_document(
-                                        document=doc,
-                                        filename="Registro SIAC",
-                                        caption="📄 Registro SIAC asociado a la llamada."
-                                    )
-                            except Exception as e:
-                                logger.error(f"Error al enviar IMAGEN1: {e}")
-                                await update.message.reply_text("⚠️ No se pudo enviar el archivo 'Registro SIAC'.")
-                            finally:
-                                try:
-                                    os.unlink(temp_path.name)
-                                except:
-                                    pass
-
-                    # IMAGEN2 (Foto/Captura)
-                    if url_imagen2:
-                        file_id = extraer_id_drive(url_imagen2)
-                        if file_id:
-                            temp_path = tempfile.NamedTemporaryFile(delete=False)
-                            temp_path.close()
-                            try:
-                                request = drive_service.files().get_media(fileId=file_id)
-                                with open(temp_path.name, 'wb') as f:
-                                    downloader = MediaIoBaseDownload(f, request)
-                                    done = False
-                                    while not done:
-                                        status, done = downloader.next_chunk()
-                                with open(temp_path.name, 'rb') as doc:
-                                    await update.message.reply_document(
-                                        document=doc,
-                                        filename="Foto o Captura del Registro del Número de Contact Center en el teléfono del Cliente",
-                                        caption="📸 Fotografía o captura de pantalla del registro"
-                                    )
-                            except Exception as e:
-                                logger.error(f"Error al enviar IMAGEN2: {e}")
-                                await update.message.reply_text("⚠️ No se pudo enviar la foto/captura.")
-                            finally:
-                                try:
-                                    os.unlink(temp_path.name)
-                                except:
-                                    pass
-        except Exception as e:
-            logger.error(f"Error general al procesar archivos adjuntos: {e}")
-            # No interrumpimos el flujo
-        # ============================================================
-        # ============================================================
     else:
         await update.message.reply_text("❌ Error al asignar la llamada.")
+
 
 async def mis_datos_activos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # (código sin cambios, idéntico al anterior)
