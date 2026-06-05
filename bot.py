@@ -600,66 +600,77 @@ async def obtener_llamada(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"❌ Error al actualizar validador: {e}")
 
         # ========== ENVÍO DE ARCHIVOS ADJUNTOS DESDE DRIVE ==========
-    #    url_imagen1 = datos_llamada[24] if len(datos_llamada) > 24 and datos_llamada[24] else None
-    #   url_imagen2 = datos_llamada[25] if len(datos_llamada) > 25 and datos_llamada[25] else None
+        # ========== ENVÍO DE ARCHIVOS ADJUNTOS DESDE DRIVE ==========
+        try:
+            # Verificar que datos_llamada tenga suficientes elementos
+            if len(datos_llamada) > 24:
+                url_imagen1 = datos_llamada[24] if datos_llamada[24] else None
+                url_imagen2 = datos_llamada[25] if len(datos_llamada) > 25 and datos_llamada[25] else None
+            else:
+                url_imagen1 = url_imagen2 = None
 
-     #   drive_service = obtener_drive_service()
-     #  if drive_service:
-     #      # IMAGEN1 (Registro SIAC)
-     #      if url_imagen1:
-     #          file_id = extraer_id_drive(url_imagen1)
-     #          if file_id:
-     #              temp_path = tempfile.NamedTemporaryFile(delete=False)
-     #              temp_path.close()
-     #              try:
-     #                  request = drive_service.files().get_media(fileId=file_id)
-     #                  with open(temp_path.name, 'wb') as f:
-     #                      downloader = MediaIoBaseDownload(f, request)
-     #                      done = False
-     #                      while not done:
-     #                          status, done = downloader.next_chunk()
-     #                  with open(temp_path.name, 'rb') as doc:
-     #                      await update.message.reply_document(
-     #                          document=doc,
-     #                          filename="Registro SIAC",
-     #                          caption="📄 Registro SIAC asociado a la llamada."
-     #                      )
-     #              except Exception as e:
-     #                  logger.error(f"Error al enviar IMAGEN1: {e}")
-     #                  await update.message.reply_text("⚠️ No se pudo enviar el archivo 'Registro SIAC'.")
-     #              finally:
-     #                  try:
-     #                      os.unlink(temp_path.name)
-     #                  except:
-     #                      pass
+            if url_imagen1 or url_imagen2:
+                drive_service = obtener_drive_service()
+                if drive_service:
+                    # IMAGEN1 (Registro SIAC)
+                    if url_imagen1:
+                        file_id = extraer_id_drive(url_imagen1)
+                        if file_id:
+                            temp_path = tempfile.NamedTemporaryFile(delete=False)
+                            temp_path.close()
+                            try:
+                                request = drive_service.files().get_media(fileId=file_id)
+                                with open(temp_path.name, 'wb') as f:
+                                    downloader = MediaIoBaseDownload(f, request)
+                                    done = False
+                                    while not done:
+                                        status, done = downloader.next_chunk()
+                                with open(temp_path.name, 'rb') as doc:
+                                    await update.message.reply_document(
+                                        document=doc,
+                                        filename="Registro SIAC",
+                                        caption="📄 Registro SIAC asociado a la llamada."
+                                    )
+                            except Exception as e:
+                                logger.error(f"Error al enviar IMAGEN1: {e}")
+                                await update.message.reply_text("⚠️ No se pudo enviar el archivo 'Registro SIAC'.")
+                            finally:
+                                try:
+                                    os.unlink(temp_path.name)
+                                except:
+                                    pass
 
-            # IMAGEN2 (Foto/Captura)
-     #      if url_imagen2:
-     #          file_id = extraer_id_drive(url_imagen2)
-     #          if file_id:
-     #              temp_path = tempfile.NamedTemporaryFile(delete=False)
-     #              temp_path.close()
-     #              try:
-     #                  request = drive_service.files().get_media(fileId=file_id)
-     #                  with open(temp_path.name, 'wb') as f:
-     #                      downloader = MediaIoBaseDownload(f, request)
-     #                      done = False
-     #                      while not done:
-     #                          status, done = downloader.next_chunk()
-     #                  with open(temp_path.name, 'rb') as doc:
-     #                      await update.message.reply_document(
-     #                          document=doc,
-     #                          filename="Foto o Captura del Registro del Número de Contact Center en el teléfono del Cliente",
-     #                          caption="📸 Fotografía o captura de pantalla del registro"
-     #                      )
-     #              except Exception as e:
-     #                  logger.error(f"Error al enviar IMAGEN2: {e}")
-     #                  await update.message.reply_text("⚠️ No se pudo enviar la foto/captura.")
-     #              finally:
-     #                  try:
-     #                      os.unlink(temp_path.name)
-     #                  except:
-     #                      pass
+                    # IMAGEN2 (Foto/Captura)
+                    if url_imagen2:
+                        file_id = extraer_id_drive(url_imagen2)
+                        if file_id:
+                            temp_path = tempfile.NamedTemporaryFile(delete=False)
+                            temp_path.close()
+                            try:
+                                request = drive_service.files().get_media(fileId=file_id)
+                                with open(temp_path.name, 'wb') as f:
+                                    downloader = MediaIoBaseDownload(f, request)
+                                    done = False
+                                    while not done:
+                                        status, done = downloader.next_chunk()
+                                with open(temp_path.name, 'rb') as doc:
+                                    await update.message.reply_document(
+                                        document=doc,
+                                        filename="Foto o Captura del Registro del Número de Contact Center en el teléfono del Cliente",
+                                        caption="📸 Fotografía o captura de pantalla del registro"
+                                    )
+                            except Exception as e:
+                                logger.error(f"Error al enviar IMAGEN2: {e}")
+                                await update.message.reply_text("⚠️ No se pudo enviar la foto/captura.")
+                            finally:
+                                try:
+                                    os.unlink(temp_path.name)
+                                except:
+                                    pass
+        except Exception as e:
+            logger.error(f"Error general al procesar archivos adjuntos: {e}")
+            # No interrumpimos el flujo
+        # ============================================================
         # ============================================================
     else:
         await update.message.reply_text("❌ Error al asignar la llamada.")
