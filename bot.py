@@ -4,7 +4,10 @@ import gspread
 import img2pdf
 import tempfile
 import pytz
+import re
 from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes, CallbackQueryHandler
@@ -98,6 +101,38 @@ def conectar_google_sheets():
     except Exception as e:
         logger.error(f"❌ Error al conectar con Google Sheets: {e}")
         return None
+
+def obtener_drive_service():
+    """Obtiene el servicio de Google Drive autenticado"""
+    try:
+        credentials_json = os.environ.get('GOOGLE_CREDENTIALS')
+        if not credentials_json:
+            logger.error("❌ GOOGLE_CREDENTIALS no está configurado en variables de entorno")
+            return None
+        creds_dict = json.loads(credentials_json)
+        scopes = ['https://www.googleapis.com/auth/drive.file']
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        service = build('drive', 'v3', credentials=creds)
+        logger.info("✅ Conexión exitosa a Google Drive")
+        return service
+    except Exception as e:
+        logger.error(f"❌ Error al conectar con Google Drive: {e}")
+        return None
+
+def extraer_id_drive(url):
+    """Extrae el ID de un archivo de Google Drive desde su URL"""
+    if not url:
+        return None
+    patterns = [
+        r'/file/d/([a-zA-Z0-9_-]+)',
+        r'id=([a-zA-Z0-9_-]+)',
+        r'/d/([a-zA-Z0-9_-]+)'
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
 
 def obtener_hoja_registros(sheet):
     try:
@@ -244,7 +279,6 @@ def registrar_hora_asignacion(data_worksheet, fila_numero):
 def incrementar_intentos(data_worksheet, fila_numero):
     """Incrementa el contador de intentos (columna AN, índice 40)"""
     try:
-        # Leer valor actual (columna AN = índice 40 en 1-based)
         valor_actual = data_worksheet.cell(fila_numero, 40).value
         if valor_actual is None or valor_actual == "":
             nuevo_valor = 1
@@ -279,10 +313,8 @@ def registrar_duracion_y_observacion(data_worksheet, fila_numero, resultado, obs
             duracion = calcular_duracion(hora_asignacion, hora_completacion)
             data_worksheet.update_cell(fila_numero, 20, duracion)  # Columna T
         if observacion:
-            # Leer observación actual desde la columna R (índice 18)
-            obs_actual = data_worksheet.cell(fila_numero, 18).value or ""
+            obs_actual = data_worksheet.cell(fila_numero, 18).value or ""  # Columna R
             nueva_obs = f"{obs_actual} | {observacion}" if obs_actual else observacion
-            # Guardar en la columna R (índice 18)
             data_worksheet.update_cell(fila_numero, 18, nueva_obs)
         return True
     except Exception as e:
@@ -332,7 +364,7 @@ def formatear_datos_llamada(datos_llamada, es_recontacto=False):
     mensaje += "Cuando termines, usa /completarllamada para registrar el resultado."
     return mensaje
 
-# ========== FUNCIONES DEL BOT (REGISTRO, LLAMADAS, ETC.) ==========
+# ========== FUNCIONES DEL BOT ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.info(f"🔍 Verificando credenciales...")
@@ -557,17 +589,83 @@ async def obtener_llamada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if 'llamadas_activas' not in context.bot_data:
             context.bot_data['llamadas_activas'] = {}
         context.bot_data['llamadas_activas'][str(telegram_id)] = llamadas_activas.usuarios_activos[telegram_id]
+        
         mensaje = formatear_datos_llamada(datos_llamada, es_recontacto=False)
         await update.message.reply_text(mensaje)
+        
         try:
             worksheet_data.update_cell(fila_num, 2, nombre_usuario)
             logger.info(f"✅ Validador actualizado: {nombre_usuario} en fila {fila_num}")
         except Exception as e:
             logger.error(f"❌ Error al actualizar validador: {e}")
+
+        # ========== ENVÍO DE ARCHIVOS ADJUNTOS DESDE DRIVE ==========
+    #    url_imagen1 = datos_llamada[24] if len(datos_llamada) > 24 and datos_llamada[24] else None
+    #   url_imagen2 = datos_llamada[25] if len(datos_llamada) > 25 and datos_llamada[25] else None
+
+     #   drive_service = obtener_drive_service()
+     #  if drive_service:
+     #      # IMAGEN1 (Registro SIAC)
+     #      if url_imagen1:
+     #          file_id = extraer_id_drive(url_imagen1)
+     #          if file_id:
+     #              temp_path = tempfile.NamedTemporaryFile(delete=False)
+     #              temp_path.close()
+     #              try:
+     #                  request = drive_service.files().get_media(fileId=file_id)
+     #                  with open(temp_path.name, 'wb') as f:
+     #                      downloader = MediaIoBaseDownload(f, request)
+     #                      done = False
+     #                      while not done:
+     #                          status, done = downloader.next_chunk()
+     #                  with open(temp_path.name, 'rb') as doc:
+     #                      await update.message.reply_document(
+     #                          document=doc,
+     #                          filename="Registro SIAC",
+     #                          caption="📄 Registro SIAC asociado a la llamada."
+     #                      )
+     #              except Exception as e:
+     #                  logger.error(f"Error al enviar IMAGEN1: {e}")
+     #                  await update.message.reply_text("⚠️ No se pudo enviar el archivo 'Registro SIAC'.")
+     #              finally:
+     #                  try:
+     #                      os.unlink(temp_path.name)
+     #                  except:
+     #                      pass
+
+            # IMAGEN2 (Foto/Captura)
+     #      if url_imagen2:
+     #          file_id = extraer_id_drive(url_imagen2)
+     #          if file_id:
+     #              temp_path = tempfile.NamedTemporaryFile(delete=False)
+     #              temp_path.close()
+     #              try:
+     #                  request = drive_service.files().get_media(fileId=file_id)
+     #                  with open(temp_path.name, 'wb') as f:
+     #                      downloader = MediaIoBaseDownload(f, request)
+     #                      done = False
+     #                      while not done:
+     #                          status, done = downloader.next_chunk()
+     #                  with open(temp_path.name, 'rb') as doc:
+     #                      await update.message.reply_document(
+     #                          document=doc,
+     #                          filename="Foto o Captura del Registro del Número de Contact Center en el teléfono del Cliente",
+     #                          caption="📸 Fotografía o captura de pantalla del registro"
+     #                      )
+     #              except Exception as e:
+     #                  logger.error(f"Error al enviar IMAGEN2: {e}")
+     #                  await update.message.reply_text("⚠️ No se pudo enviar la foto/captura.")
+     #              finally:
+     #                  try:
+     #                      os.unlink(temp_path.name)
+     #                  except:
+     #                      pass
+        # ============================================================
     else:
         await update.message.reply_text("❌ Error al asignar la llamada.")
 
 async def mis_datos_activos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # (código sin cambios, idéntico al anterior)
     telegram_id = update.effective_user.id
     sheet = conectar_google_sheets()
     if sheet:
@@ -612,6 +710,7 @@ async def mis_datos_activos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(mensaje)
 
 async def completar_llamada(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # (código sin cambios)
     telegram_id = update.effective_user.id
     sheet = conectar_google_sheets()
     if sheet:
@@ -713,6 +812,7 @@ async def recibir_observacion(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("❌ Error al registrar el resultado.")
 
 async def mis_pendientes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # (código sin cambios)
     telegram_id = update.effective_user.id
     sheet = conectar_google_sheets()
     if not sheet:
@@ -755,6 +855,7 @@ async def mis_pendientes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(mensaje, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def revisar_pendientes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # (código sin cambios)
     telegram_id = update.effective_user.id
     sheet = conectar_google_sheets()
     if not sheet:
@@ -793,6 +894,7 @@ async def revisar_pendientes(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(mensaje, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def manejar_notificacion_boton(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # (código sin cambios)
     query = update.callback_query
     await query.answer()
     telegram_id = query.from_user.id
@@ -922,10 +1024,7 @@ async def tomar_recontacto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not hora_asignacion:
             await query.edit_message_text("❌ Error al registrar la hora de asignación.")
             return
-        
-        # Incrementar contador de intentos
         incrementar_intentos(worksheet_data, fila_num)
-        
         if actualizar_estado_llamada(worksheet_data, fila_num, "EN PROCESO"):
             try:
                 worksheet_data.update_cell(fila_num, 22, "")  # Limpiar AGENTE_ASIGNADO
@@ -959,6 +1058,7 @@ async def tomar_recontacto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"❌ Error al procesar el recontacto: {e}")
 
 async def notificar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # (código sin cambios)
     telegram_id = update.effective_user.id
     sheet = conectar_google_sheets()
     if not sheet:
@@ -1019,6 +1119,7 @@ async def miestado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📋 Tu información de registro:\n\n📅 Fecha registro: {fecha}\n👤 Nombre: {nombre}\n🆔 Cédula: {cedula}\n🤖 Telegram ID: {telegram_id}\n📱 Teléfono: {telefono}\n{estado_emoji} Estado: {estado}\n👑 Rol: {rol}")
 
 async def cambiarrol(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # (código sin cambios)
     telegram_id = update.effective_user.id
     sheet = conectar_google_sheets()
     if not sheet:
@@ -1252,9 +1353,7 @@ async def guardar_siac_folio(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         worksheet_data.update_cell(cliente['fila'], 4, folio)
         await update.message.reply_text(f"✅ *Folio SIAC asignado correctamente*\n\nCliente: {cliente['nombre']}\nFolio: {folio}\n\nLa llamada ha sido actualizada.")
-        # Limpiar datos temporales
         context.user_data.clear()
-        # Eliminar este cliente de la lista de resultados
         if telegram_id in busqueda_siac:
             nuevos_resultados = [r for r in busqueda_siac[telegram_id]['resultados'] if r['fila'] != cliente['fila']]
             if nuevos_resultados:
