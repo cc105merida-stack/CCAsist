@@ -560,38 +560,57 @@ async def obtener_llamada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No estás registrado en el sistema. Usa /registrar")
         return
     nombre_usuario = obtener_nombre_usuario(worksheet_registros, telegram_id) or f"Usuario {telegram_id}"
+    
     if telegram_id in llamadas_activas.usuarios_activos:
         folio_activo = llamadas_activas.usuarios_activos[telegram_id].get('folio', 'desconocido')
         await update.message.reply_text(f"⚠️ Ya tienes una llamada activa (folio: {folio_activo}).\nCompleta con /completarllamada")
         return
+    
     worksheet_data = obtener_hoja_data(sheet)
     if not worksheet_data:
         await update.message.reply_text("❌ Error: No se encontró la hoja 'Data'.")
         return
+    
     fila_num, datos_llamada = obtener_siguiente_llamada_disponible(worksheet_data)
     if not fila_num or not datos_llamada:
         await update.message.reply_text("📭 No hay llamadas disponibles en este momento.")
         return
+    
     hora_asignacion = registrar_hora_asignacion(worksheet_data, fila_num)
     if not hora_asignacion:
         await update.message.reply_text("❌ Error al registrar la hora de asignación.")
         return
 
+    # Incrementar contador de intentos
     incrementar_intentos(worksheet_data, fila_num)
 
     if actualizar_estado_llamada(worksheet_data, fila_num, "EN PROCESO"):
         folio_siac = datos_llamada[3] if len(datos_llamada) > 3 else "Sin folio"
+        
+        # Guardar la llamada activa en memoria
         llamadas_activas.usuarios_activos[telegram_id] = {
-            'fila': fila_num, 'folio': folio_siac, 'datos': datos_llamada,
-            'nombre_usuario': nombre_usuario, 'hora_asignacion': hora_asignacion, 'es_recontacto': False
+            'fila': fila_num, 
+            'folio': folio_siac, 
+            'datos': datos_llamada,
+            'nombre_usuario': nombre_usuario, 
+            'hora_asignacion': hora_asignacion, 
+            'es_recontacto': False
         }
         if 'llamadas_activas' not in context.bot_data:
             context.bot_data['llamadas_activas'] = {}
         context.bot_data['llamadas_activas'][str(telegram_id)] = llamadas_activas.usuarios_activos[telegram_id]
 
+        # ACTUALIZAR EL VALIDADOR PRIMERO (columna B)
+        try:
+            worksheet_data.update_cell(fila_num, 2, nombre_usuario)
+            logger.info(f"✅ Validador actualizado: {nombre_usuario} en fila {fila_num}")
+        except Exception as e:
+            logger.error(f"❌ Error al actualizar validador: {e}")
+
+        # Construir el mensaje principal
         mensaje = formatear_datos_llamada(datos_llamada, es_recontacto=False)
 
-        # ===== ENLACES DE DRIVE (sin descarga) =====
+        # Agregar enlaces de Drive (sin descarga)
         url_imagen1 = datos_llamada[24] if len(datos_llamada) > 24 and datos_llamada[24] else None
         url_imagen2 = datos_llamada[25] if len(datos_llamada) > 25 and datos_llamada[25] else None
 
@@ -603,17 +622,15 @@ async def obtener_llamada(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 mensaje += f"• 📸 [Foto o Captura del Contact Center]({url_imagen2})\n"
             mensaje += "\n_Haz clic en los enlaces para abrir los documentos._"
 
-        await update.message.reply_text(mensaje, parse_mode='Markdown')
-        # ===========================================
-
+        # Enviar el mensaje con manejo de errores de Markdown
         try:
-            worksheet_data.update_cell(fila_num, 2, nombre_usuario)
-            logger.info(f"✅ Validador actualizado: {nombre_usuario} en fila {fila_num}")
+            await update.message.reply_text(mensaje, parse_mode='Markdown')
         except Exception as e:
-            logger.error(f"❌ Error al actualizar validador: {e}")
+            logger.error(f"❌ Error al enviar mensaje con Markdown: {e}")
+            # Si falla, enviar sin formato Markdown
+            await update.message.reply_text(mensaje.replace('*', '').replace('_', ''))
     else:
         await update.message.reply_text("❌ Error al asignar la llamada.")
-
 
 async def mis_datos_activos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # (código sin cambios, idéntico al anterior)
