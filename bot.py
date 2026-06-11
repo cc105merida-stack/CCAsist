@@ -4,10 +4,7 @@ import gspread
 import img2pdf
 import tempfile
 import pytz
-import re
 from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes, CallbackQueryHandler
@@ -101,38 +98,6 @@ def conectar_google_sheets():
     except Exception as e:
         logger.error(f"❌ Error al conectar con Google Sheets: {e}")
         return None
-
-def obtener_drive_service():
-    """Obtiene el servicio de Google Drive autenticado"""
-    try:
-        credentials_json = os.environ.get('GOOGLE_CREDENTIALS')
-        if not credentials_json:
-            logger.error("❌ GOOGLE_CREDENTIALS no está configurado en variables de entorno")
-            return None
-        creds_dict = json.loads(credentials_json)
-        scopes = ['https://www.googleapis.com/auth/drive.file']
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        service = build('drive', 'v3', credentials=creds)
-        logger.info("✅ Conexión exitosa a Google Drive")
-        return service
-    except Exception as e:
-        logger.error(f"❌ Error al conectar con Google Drive: {e}")
-        return None
-
-def extraer_id_drive(url):
-    """Extrae el ID de un archivo de Google Drive desde su URL"""
-    if not url:
-        return None
-    patterns = [
-        r'/file/d/([a-zA-Z0-9_-]+)',
-        r'id=([a-zA-Z0-9_-]+)',
-        r'/d/([a-zA-Z0-9_-]+)'
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, url)
-        if match:
-            return match.group(1)
-    return None
 
 def obtener_hoja_registros(sheet):
     try:
@@ -313,7 +278,7 @@ def registrar_duracion_y_observacion(data_worksheet, fila_numero, resultado, obs
             duracion = calcular_duracion(hora_asignacion, hora_completacion)
             data_worksheet.update_cell(fila_numero, 20, duracion)  # Columna T
         if observacion:
-            obs_actual = data_worksheet.cell(fila_numero, 18).value or ""  # Columna R
+            obs_actual = data_worksheet.cell(fila_numero, 18).value or ""
             nueva_obs = f"{obs_actual} | {observacion}" if obs_actual else observacion
             data_worksheet.update_cell(fila_numero, 18, nueva_obs)
         return True
@@ -560,57 +525,45 @@ async def obtener_llamada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No estás registrado en el sistema. Usa /registrar")
         return
     nombre_usuario = obtener_nombre_usuario(worksheet_registros, telegram_id) or f"Usuario {telegram_id}"
-    
     if telegram_id in llamadas_activas.usuarios_activos:
         folio_activo = llamadas_activas.usuarios_activos[telegram_id].get('folio', 'desconocido')
         await update.message.reply_text(f"⚠️ Ya tienes una llamada activa (folio: {folio_activo}).\nCompleta con /completarllamada")
         return
-    
     worksheet_data = obtener_hoja_data(sheet)
     if not worksheet_data:
         await update.message.reply_text("❌ Error: No se encontró la hoja 'Data'.")
         return
-    
     fila_num, datos_llamada = obtener_siguiente_llamada_disponible(worksheet_data)
     if not fila_num or not datos_llamada:
         await update.message.reply_text("📭 No hay llamadas disponibles en este momento.")
         return
-    
     hora_asignacion = registrar_hora_asignacion(worksheet_data, fila_num)
     if not hora_asignacion:
         await update.message.reply_text("❌ Error al registrar la hora de asignación.")
         return
 
-    # Incrementar contador de intentos
     incrementar_intentos(worksheet_data, fila_num)
 
     if actualizar_estado_llamada(worksheet_data, fila_num, "EN PROCESO"):
         folio_siac = datos_llamada[3] if len(datos_llamada) > 3 else "Sin folio"
-        
-        # Guardar la llamada activa en memoria
         llamadas_activas.usuarios_activos[telegram_id] = {
-            'fila': fila_num, 
-            'folio': folio_siac, 
-            'datos': datos_llamada,
-            'nombre_usuario': nombre_usuario, 
-            'hora_asignacion': hora_asignacion, 
-            'es_recontacto': False
+            'fila': fila_num, 'folio': folio_siac, 'datos': datos_llamada,
+            'nombre_usuario': nombre_usuario, 'hora_asignacion': hora_asignacion, 'es_recontacto': False
         }
         if 'llamadas_activas' not in context.bot_data:
             context.bot_data['llamadas_activas'] = {}
         context.bot_data['llamadas_activas'][str(telegram_id)] = llamadas_activas.usuarios_activos[telegram_id]
 
-        # ACTUALIZAR EL VALIDADOR PRIMERO (columna B)
+        # Actualizar validador (columna B)
         try:
             worksheet_data.update_cell(fila_num, 2, nombre_usuario)
             logger.info(f"✅ Validador actualizado: {nombre_usuario} en fila {fila_num}")
         except Exception as e:
             logger.error(f"❌ Error al actualizar validador: {e}")
 
-        # Construir el mensaje principal
         mensaje = formatear_datos_llamada(datos_llamada, es_recontacto=False)
 
-        # Agregar enlaces de Drive (sin descarga)
+        # Agregar enlaces de Drive
         url_imagen1 = datos_llamada[24] if len(datos_llamada) > 24 and datos_llamada[24] else None
         url_imagen2 = datos_llamada[25] if len(datos_llamada) > 25 and datos_llamada[25] else None
 
@@ -622,18 +575,15 @@ async def obtener_llamada(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 mensaje += f"• 📸 [Foto o Captura del Contact Center]({url_imagen2})\n"
             mensaje += "\n_Haz clic en los enlaces para abrir los documentos._"
 
-        # Enviar el mensaje con manejo de errores de Markdown
         try:
             await update.message.reply_text(mensaje, parse_mode='Markdown')
         except Exception as e:
             logger.error(f"❌ Error al enviar mensaje con Markdown: {e}")
-            # Si falla, enviar sin formato Markdown
             await update.message.reply_text(mensaje.replace('*', '').replace('_', ''))
     else:
         await update.message.reply_text("❌ Error al asignar la llamada.")
 
 async def mis_datos_activos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # (código sin cambios, idéntico al anterior)
     telegram_id = update.effective_user.id
     sheet = conectar_google_sheets()
     if sheet:
@@ -678,7 +628,6 @@ async def mis_datos_activos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(mensaje)
 
 async def completar_llamada(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # (código sin cambios)
     telegram_id = update.effective_user.id
     sheet = conectar_google_sheets()
     if sheet:
@@ -725,10 +674,20 @@ async def manejar_resultado_llamada(update: Update, context: ContextTypes.DEFAUL
     context.user_data['llamada_temp'] = llamada_activa
     if resultado == "completada":
         keyboard = [
-            [InlineKeyboardButton("✅ Validada", callback_data="validacion_validada"), InlineKeyboardButton("📅 Llamada programada", callback_data="validacion_programada")],
-            [InlineKeyboardButton("❌ Servicio Cancelado", callback_data="validacion_cancelado"), InlineKeyboardButton("⏳ Pendiente por el promotor", callback_data="validacion_pendiente")]
+            [
+                InlineKeyboardButton("✅ Validada", callback_data="validacion_validada"),
+                InlineKeyboardButton("📅 Llamada programada", callback_data="validacion_programada"),
+            ],
+            [
+                InlineKeyboardButton("❌ Servicio Cancelado", callback_data="validacion_cancelado"),
+                InlineKeyboardButton("📋 Documentación Incompleta", callback_data="validacion_doc_incompleta"),
+            ]
         ]
-        await query.edit_message_text("📋 Selecciona el estado de validación de la llamada:", reply_markup=InlineKeyboardMarkup(keyboard))
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            "📋 Selecciona el estado de validación de la llamada:",
+            reply_markup=reply_markup
+        )
         return
     await query.edit_message_text(f"📝 Resultado seleccionado: {resultado.upper()}\n\nPor favor, escribe una breve observación (opcional).\nPuedes enviar 'skip' para omitir:")
 
@@ -736,7 +695,12 @@ async def manejar_validacion(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     validacion = query.data.replace("validacion_", "")
-    opciones_validacion = {"validada": "Validada", "programada": "Llamada programada", "cancelado": "Servicio Cancelado", "pendiente": "Pendiente por el promotor"}
+    opciones_validacion = {
+        "validada": "Validada",
+        "programada": "Llamada programada",
+        "cancelado": "Servicio Cancelado",
+        "doc_incompleta": "Documentación Incompleta"
+    }
     estado_validacion = opciones_validacion.get(validacion, validacion)
     context.user_data['validacion_estado'] = estado_validacion
     await query.edit_message_text(f"📝 Estado de validación seleccionado: {estado_validacion}\n\nPor favor, escribe una breve observación (opcional).\nPuedes enviar 'skip' para omitir:")
@@ -780,7 +744,6 @@ async def recibir_observacion(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("❌ Error al registrar el resultado.")
 
 async def mis_pendientes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # (código sin cambios)
     telegram_id = update.effective_user.id
     sheet = conectar_google_sheets()
     if not sheet:
@@ -823,7 +786,6 @@ async def mis_pendientes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(mensaje, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def revisar_pendientes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # (código sin cambios)
     telegram_id = update.effective_user.id
     sheet = conectar_google_sheets()
     if not sheet:
@@ -862,7 +824,6 @@ async def revisar_pendientes(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(mensaje, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def manejar_notificacion_boton(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # (código sin cambios)
     query = update.callback_query
     await query.answer()
     telegram_id = query.from_user.id
@@ -927,7 +888,7 @@ async def manejar_notificacion_boton(update: Update, context: ContextTypes.DEFAU
         try:
             await context.bot.send_message(chat_id=int(agente_telegram_id), text=mensaje_notificacion, reply_markup=reply_markup)
             mensaje_exito = (f"✅ Notificación enviada al agente {llamada['validador']}\n\n📱 Cliente: {llamada['celular_cliente']}\n👤 Nombre: {llamada['nombre_cliente']}\n"
-                             f"📋 Folio: {llamada['folio']}\n\nLa llamada ha sido eliminada da la lista de pendientes.\nEl agente recibió un botón para tomar la llamada.\n"
+                             f"📋 Folio: {llamada['folio']}\n\nLa llamada ha sido eliminada de la lista de pendientes.\nEl agente recibió un botón para tomar la llamada.\n"
                              f"También puede usar /mispendientes para ver todas sus llamadas pendientes.")
             close_keyboard = [[InlineKeyboardButton("❌ Cerrar", callback_data="cerrar_notificacion")]]
             await query.edit_message_text(mensaje_exito, reply_markup=InlineKeyboardMarkup(close_keyboard))
@@ -1026,7 +987,6 @@ async def tomar_recontacto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"❌ Error al procesar el recontacto: {e}")
 
 async def notificar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # (código sin cambios)
     telegram_id = update.effective_user.id
     sheet = conectar_google_sheets()
     if not sheet:
@@ -1087,7 +1047,6 @@ async def miestado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📋 Tu información de registro:\n\n📅 Fecha registro: {fecha}\n👤 Nombre: {nombre}\n🆔 Cédula: {cedula}\n🤖 Telegram ID: {telegram_id}\n📱 Teléfono: {telefono}\n{estado_emoji} Estado: {estado}\n👑 Rol: {rol}")
 
 async def cambiarrol(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # (código sin cambios)
     telegram_id = update.effective_user.id
     sheet = conectar_google_sheets()
     if not sheet:
